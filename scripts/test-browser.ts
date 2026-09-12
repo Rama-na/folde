@@ -10,13 +10,15 @@
  * gets deployed.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { cpSync, existsSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
+import { buildPile, pileExists } from "./make-pile";
 
 const PORT = 3311;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const FIXTURES = join(process.cwd(), "tests", "fixtures");
+const PILE = join(FIXTURES, "pile");
 
 let failures = 0;
 
@@ -303,6 +305,128 @@ function assembleStandalone(): void {
   }
 }
 
+/**
+ * The case that started the project, at the width it will actually be used.
+ *
+ * Everything in this product is premised on "42 documents, 37.6 MB" and until now
+ * the browser had never seen more than four, at desktop width. Mobile-first is
+ * written in DESIGN.md; this is where that claim either holds or does not.
+ */
+async function runPile(browser: Browser): Promise<void> {
+  console.log("\nbrowser: 42 mixed files at phone width");
+
+  if (!pileExists()) {
+    console.log("  building the pile (first run only)...");
+    await buildPile();
+  }
+  const names = readdirSync(PILE).sort();
+  const total = names.reduce(
+    (n, name) => n + readFileSync(join(PILE, name)).length,
+    0,
+  );
+
+  // A mid-range Android, which is what this is for.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+
+  try {
+    await page.goto(ORIGIN);
+    await page.setInputFiles(
+      'input[type="file"]',
+      names.map((name) => join(PILE, name)),
+    );
+
+    const listed =
+      (await page.locator("h2", { hasText: "files" }).first().textContent()) ?? "";
+    console.log(
+      `  ${names.length} files, ${(total / 1_000_000).toFixed(1)} MB — page holds: ${listed.trim()}`,
+    );
+    check(
+      `all ${names.length} files reached the page`,
+      listed.includes(`${names.length} files`),
+      listed.trim(),
+    );
+
+    // Nothing may overflow sideways at 390px. A horizontal scrollbar on a phone is
+    // the difference between usable and not.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check("no horizontal scroll at 390px", overflow <= 0, `${overflow}px over`);
+
+    await page.getByRole("tab", { name: "Sending by email" }).click();
+    await page.getByRole("button", { name: /^5 MB/ }).click();
+
+    // Every control has to be thumb-sized. DESIGN.md says 44px minimum.
+    const small = await page.evaluate(() => {
+      const out: string[] = [];
+      for (const el of document.querySelectorAll("button, input, select, a")) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        if (r.height < 44) out.push(`${el.tagName}:${Math.round(r.height)}px`);
+      }
+      return out;
+    });
+    check("every visible control is at least 44px tall", small.length === 0, small.join(", "));
+
+    const started = Date.now();
+    await page.getByRole("button", { name: "Make it fit" }).click();
+    await page
+      .getByRole("heading", { name: /email(s)? to send/ })
+      .waitFor({ timeout: 900_000 });
+    const elapsed = Date.now() - started;
+
+    const summary =
+      (await page.locator("section", { hasText: "→" }).first().textContent()) ?? "";
+    console.log(`  ${summary.replace(/\s+/g, " ").trim()} in ${(elapsed / 1000).toFixed(1)}s`);
+
+    check(
+      `all ${names.length} files came back from the worker`,
+      summary.includes(`${names.length} files`),
+      summary.replace(/\s+/g, " ").trim(),
+    );
+    await assertClean(page, "the pile");
+    check(
+      "no file is reported as failing when the batches all worked",
+      (await page.getByText("could not reach the limit").count()) === 0,
+    );
+
+    const wire = await page.getByText("on the wire").allTextContents();
+    console.log(`  batches: ${wire.map((w) => w.trim()).join(", ")}`);
+    check("batches were produced", wire.length > 0);
+    check(
+      "every batch is under the 5 MB cap",
+      wire.every((label) => {
+        const mb = /([\d.]+)\s*MB on the wire/.exec(label);
+        return mb ? Number(mb[1]) <= 5 : true;
+      }),
+      wire.join(" | "),
+    );
+
+    const after = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check("still no horizontal scroll with results shown", after <= 0, `${after}px over`);
+
+    // Not a pass/fail — a number worth knowing, since nobody had one.
+    console.log(
+      `  throughput: ${(total / 1_000_000 / (elapsed / 1000)).toFixed(1)} MB/s ` +
+        `across ${names.length} files`,
+    );
+  } finally {
+    await context.close();
+  }
+}
+
 async function main(): Promise<void> {
   assembleStandalone();
 
@@ -334,6 +458,7 @@ async function main(): Promise<void> {
     });
 
     await run(page);
+    await runPile(browser);
   } finally {
     await browser?.close();
     server.kill();

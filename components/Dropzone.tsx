@@ -50,7 +50,7 @@ export function Dropzone({
     >
       <p className="text-lg font-medium">Drop your documents here</p>
       <p className="mt-1 text-sm text-ink-soft">
-        PDFs. They never leave your device.
+        PDFs and photos. They never leave your device.
       </p>
 
       <button
@@ -65,7 +65,7 @@ export function Dropzone({
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept="application/pdf,image/jpeg,image/png,image/heic,.pdf,.jpg,.jpeg,.png,.heic"
         multiple
         hidden
         onChange={(e) => {

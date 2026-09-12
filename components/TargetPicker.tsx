@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { formatBytes } from "@/lib/bytes";
+import { formatBytes, KB, MB } from "@/lib/bytes";
 import {
   MAIL_PRESETS,
   UPLOAD_PRESETS,
+  customPreset,
   type Preset,
   type PresetMode,
 } from "@/lib/presets";
@@ -76,6 +77,82 @@ export function TargetPicker({
             </span>
           </button>
         ))}
+      </div>
+
+      <CustomLimit
+        mode={mode}
+        active={selected?.id === "custom"}
+        onSelect={onSelect}
+      />
+    </div>
+  );
+}
+
+/**
+ * A limit we do not carry a figure for.
+ *
+ * Portals change their caps without notice and there are more of them than any list
+ * can hold. Without this, someone whose form says 350 KB has no route through the
+ * product at all — which is a strange way to treat the one number they actually know.
+ */
+function CustomLimit({
+  mode,
+  active,
+  onSelect,
+}: {
+  mode: PresetMode;
+  active: boolean;
+  onSelect: (preset: Preset) => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [unit, setUnit] = useState<"KB" | "MB">("KB");
+
+  const apply = (rawAmount: string, rawUnit: "KB" | "MB") => {
+    const n = Number(rawAmount);
+    if (!Number.isFinite(n) || n <= 0) return;
+    onSelect(customPreset(Math.round(n * (rawUnit === "KB" ? KB : MB)), mode));
+  };
+
+  return (
+    <div
+      className={[
+        "mt-2 rounded-[10px] border p-3 transition-colors duration-150",
+        active ? "border-accent bg-accent/10" : "border-edge bg-surface",
+      ].join(" ")}
+    >
+      <label
+        htmlFor="custom-limit"
+        className="block text-sm font-medium"
+      >
+        Or type the limit your form gives
+      </label>
+      <div className="mt-2 flex gap-2">
+        <input
+          id="custom-limit"
+          type="number"
+          inputMode="decimal"
+          min={1}
+          placeholder="350"
+          value={amount}
+          onChange={(e) => {
+            setAmount(e.target.value);
+            apply(e.target.value, unit);
+          }}
+          className="tabular min-h-[44px] w-full min-w-0 rounded-[10px] border border-edge bg-canvas px-3 text-base"
+        />
+        <select
+          aria-label="Unit"
+          value={unit}
+          onChange={(e) => {
+            const next = e.target.value as "KB" | "MB";
+            setUnit(next);
+            apply(amount, next);
+          }}
+          className="min-h-[44px] shrink-0 rounded-[10px] border border-edge bg-canvas px-3 text-base"
+        >
+          <option value="KB">KB</option>
+          <option value="MB">MB</option>
+        </select>
       </div>
     </div>
   );

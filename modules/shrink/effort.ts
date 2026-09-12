@@ -73,3 +73,57 @@ function clamp01(n: number): number {
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+/**
+ * The effort curve for a standalone image.
+ *
+ * The PDF curve is expressed in DPI, which is meaningful for a scan placed on a page
+ * and meaningless for a photograph that has no page. This one maps effort to a plain
+ * scale factor instead, keeping the same shape and the same reasoning: resolution is
+ * given up across the whole range while quality holds at its ceiling until halfway,
+ * because a slightly smaller photo reads better than a blocky one.
+ */
+export interface ImageEffortPoint {
+  /** Multiplier on each dimension, 0..1. */
+  scale: number;
+  quality: number;
+}
+
+/** Past this the image is too small for a form that also checks pixel dimensions. */
+export const MIN_LONG_EDGE_PX = 400;
+
+const MIN_SCALE = 0.2;
+
+export function imageEffortPoint(effort: number): ImageEffortPoint {
+  const t = clamp01(effort);
+  const scale = 1 - t * (1 - MIN_SCALE);
+
+  const qt = Math.max(0, (t - 0.5) / 0.5);
+  const quality = MAX_QUALITY - qt * (MAX_QUALITY - MIN_QUALITY);
+
+  return { scale: round2(scale), quality: round2(quality) };
+}
+
+/**
+ * Apply a scale to an image without shrinking it past usefulness.
+ *
+ * Portals that cap a photograph at 50 KB usually also demand a minimum pixel size —
+ * 200x230 is the common one — and reject anything under it. A file that hits the byte
+ * target and is refused for being too small has solved nothing, so the long edge has a
+ * floor. An image already below the floor is never scaled further, and nothing is ever
+ * scaled up: enlarging a photo adds bytes and no detail.
+ */
+export function scaledSize(
+  width: number,
+  height: number,
+  scale: number,
+): { width: number; height: number } {
+  const longEdge = Math.max(width, height);
+  const floorScale = longEdge <= MIN_LONG_EDGE_PX ? 1 : MIN_LONG_EDGE_PX / longEdge;
+  const effective = Math.min(1, Math.max(scale, floorScale));
+
+  return {
+    width: Math.max(1, Math.round(width * effective)),
+    height: Math.max(1, Math.round(height * effective)),
+  };
+}

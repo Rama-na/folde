@@ -41,7 +41,7 @@ export function FileList({
           <button
             type="button"
             onClick={onClear}
-            className="text-sm text-ink-soft underline-offset-4 hover:text-ink hover:underline"
+            className="-mr-2 min-h-[44px] px-2 text-sm text-ink-soft underline-offset-4 hover:text-ink hover:underline"
           >
             Clear
           </button>
@@ -50,7 +50,7 @@ export function FileList({
 
       <ul className="divide-y divide-edge">
         {files.map((file) => (
-          <li key={file.id} className="flex items-center gap-3 px-4 py-2.5">
+          <li key={file.id} className="flex items-center gap-3 py-0.5 pl-4 pr-1">
             <span className="min-w-0 flex-1 truncate text-sm" title={file.name}>
               {file.name}
             </span>
@@ -62,7 +62,9 @@ export function FileList({
                 type="button"
                 onClick={() => onRemove(file.id)}
                 aria-label={`Remove ${file.name}`}
-                className="shrink-0 rounded px-2 py-1 text-ink-soft hover:text-wont"
+                // A full 44px square. The glyph is small but the target is not:
+                // mis-tapping remove on file 30 of 42 costs the whole file.
+                className="grid size-11 shrink-0 place-items-center rounded text-ink-soft hover:text-wont"
               >
                 ✕
               </button>

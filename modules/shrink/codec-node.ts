@@ -1,6 +1,6 @@
 import "server-only";
 import sharp from "sharp";
-import type { ImageCodec, TranscodeRequest } from "./types";
+import type { ImageCodec, ImageSize, TranscodeRequest } from "./types";
 
 /**
  * The Node-side image codec, used by the test runner and by any future server path.
@@ -14,6 +14,13 @@ import type { ImageCodec, TranscodeRequest } from "./types";
  * measure something users never get.
  */
 export const nodeCodec: ImageCodec = {
+  async probeSize(source: Uint8Array): Promise<ImageSize> {
+    // Reads the header only; sharp does not decode pixels for metadata.
+    const { width, height } = await sharp(Buffer.from(source)).metadata();
+    if (!width || !height) throw new Error("Image has no readable dimensions");
+    return { width, height };
+  },
+
   async transcodeJpeg(
     source: Uint8Array,
     { width, height, quality }: TranscodeRequest,

@@ -47,6 +47,22 @@ export function useShrinkJob() {
     };
   }, []);
 
+  /**
+   * Warn before a refresh throws away a running job.
+   *
+   * Nothing is persisted, on purpose — browser storage on a shared or family device
+   * is the wrong place for someone's Aadhaar. The cost of that choice is that a
+   * mistimed reload during a forty-file run loses all of it, so the browser's own
+   * confirmation is the mitigation. It is only armed while work is actually in
+   * flight; a standing "are you sure" on an idle page trains people to click through.
+   */
+  useEffect(() => {
+    if (!state.running) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [state.running]);
+
   const ensureWorker = useCallback((): Worker => {
     workerRef.current ??= new Worker(
       new URL("../workers/document.worker.ts", import.meta.url),

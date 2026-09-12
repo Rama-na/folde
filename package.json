@@ -10,11 +10,13 @@
     "fixtures": "tsx scripts/make-fixtures.ts",
     "test:shrink": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-shrink.ts",
     "test:bytes": "tsx scripts/test-bytes.ts",
-    "test": "npm run test:bytes && npm run test:pack && npm run test:shrink",
+    "test": "npm run test:bytes && npm run test:pack && npm run test:image && npm run test:shrink",
     "test:pack": "tsx scripts/test-pack.ts",
     "test:browser": "tsx scripts/test-browser.ts",
     "test:all": "npm run test && npm run build && npm run test:browser",
-    "prebuild": "tsx scripts/copy-pdfjs-worker.ts"
+    "prebuild": "tsx scripts/copy-pdfjs-worker.ts",
+    "test:image": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-image.ts",
+    "fixtures:pile": "tsx scripts/make-pile.ts"
   },
   "dependencies": {
     "fflate": "^0.8.3",

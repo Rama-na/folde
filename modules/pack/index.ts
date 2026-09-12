@@ -214,22 +214,5 @@ function capacityIgnoringParts(cap: number, zipped: boolean): number {
   return lo;
 }
 
-/**
- * A human-readable manifest of what went where.
- *
- * Sent with the batches so the recipient can tell at a glance whether they have
- * everything — the anxiety this product exists to remove is not "is it compressed",
- * it is "did all forty-two of them arrive".
- */
-export function describeBatch(batch: Batch, total: number): string {
-  const label = `${pad(batch.index)} of ${pad(total)}`;
-  const lines = batch.items.map((item) => `  ${item.name}`);
-  return [`Part ${label} — ${batch.items.length} file(s)`, ...lines].join("\n");
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
 /** Per-attachment MIME overhead, re-exported so callers need not reach into lib. */
 export { MIME_PART_OVERHEAD };

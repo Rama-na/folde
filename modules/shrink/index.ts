@@ -1,4 +1,6 @@
+import { detectType, isImage, type FileKind } from "@/lib/file-type";
 import { effortPoint } from "./effort";
+import { openImageSession } from "./image";
 import { inspectPdf, losslessShrinkPdf } from "./lossless";
 import { openDownsampleSession } from "./pdf-images";
 import { searchForTarget, type Probe } from "./search";
@@ -11,7 +13,8 @@ import {
 } from "./types";
 
 export * from "./types";
-export { effortPoint } from "./effort";
+export { effortPoint, imageEffortPoint, scaledSize, MIN_LONG_EDGE_PX } from "./effort";
+export { openImageSession } from "./image";
 export { searchForTarget } from "./search";
 export { inspectPdf } from "./lossless";
 
@@ -197,4 +200,140 @@ function explainShortfall(
     return `${gap} Converting the pages to images would get there, but that would remove selectable text.`;
   }
   return `${gap} Splitting it into separate pages and uploading them one at a time is usually the way through.`;
+}
+
+/**
+ * Shrink a photograph to fit `target` bytes.
+ *
+ * Two rungs. A file already under the target comes back untouched — the same rule as
+ * everywhere else, and the one that matters most here, since a 40 KB signature asked
+ * to reach 50 KB should never be re-encoded at all. Otherwise the same target search
+ * used for PDFs runs along the image effort curve.
+ *
+ * Output is always JPEG. `textPreserved` is always true: there was never text to
+ * lose, so a photograph never triggers the warning a rasterized PDF does.
+ */
+export async function shrinkImage(
+  source: Uint8Array,
+  target: number,
+  sourceType: string,
+  options: ShrinkOptions,
+  signal?: AbortSignal,
+): Promise<ShrinkResult> {
+  const originalSize = source.length;
+  const base = { target, originalSize };
+
+  if (originalSize <= target) {
+    return {
+      ...base,
+      ok: true,
+      bytes: source,
+      size: originalSize,
+      rung: "passthrough",
+      textPreserved: true,
+    };
+  }
+
+  throwIfAborted(signal);
+
+  let session;
+  try {
+    session = await openImageSession(source, sourceType, options.codec);
+  } catch {
+    return {
+      ...base,
+      ok: false,
+      bytes: source,
+      size: originalSize,
+      rung: "passthrough",
+      textPreserved: true,
+      shortfall: describeUndecodable(sourceType),
+    };
+  }
+
+  const probe: Probe = async (effort) => {
+    const bytes = await session.probe(effort);
+    return {
+      bytes,
+      size: bytes.length,
+      rung: "downsample",
+      textPreserved: true,
+    };
+  };
+
+  const found = await searchForTarget(
+    probe,
+    target,
+    { maxProbes: options.maxProbes },
+    signal,
+  );
+  if (found.best) return { ...base, ...found.best, ok: true };
+
+  const floor = session.sizeAt(1);
+  return {
+    ...base,
+    ...found.closest,
+    ok: false,
+    shortfall:
+      `The smallest this image goes is ${formatBytes(found.closest.size)}, still over ` +
+      `the ${formatBytes(target)} limit. It is already down to ${floor.width}x${floor.height} ` +
+      `pixels, and going smaller would make it too small for most forms to accept.`,
+  };
+}
+
+/**
+ * Why a photograph could not be read.
+ *
+ * HEIC gets its own sentence because it is common and fixable. Safari decodes it, so
+ * it works on an iPhone; Chrome does not, and someone who took the photo on an iPhone
+ * and is uploading from a laptop hits exactly this. Naming the setting is more use
+ * than a multi-megabyte decoder would be.
+ */
+function describeUndecodable(sourceType: string): string {
+  if (sourceType === "image/heic") {
+    return (
+      "This is an iPhone HEIC photo, which this browser cannot read. On the iPhone, " +
+      "Settings > Camera > Formats > Most Compatible makes new photos JPEG, or open " +
+      "it in Photos and share it as a JPEG."
+    );
+  }
+  return "This image could not be read — it may be damaged or in an unsupported format.";
+}
+
+/**
+ * Shrink whatever this is, chosen by its bytes rather than its name.
+ *
+ * The single entry point the worker calls. Dispatching on content matters: phones and
+ * scanner apps routinely write a file whose extension does not match it, and sending
+ * a photograph to the PDF parser tells its owner their file is damaged when it is
+ * perfectly fine.
+ */
+export async function shrinkFile(
+  source: Uint8Array,
+  target: number,
+  options: ShrinkOptions,
+  signal?: AbortSignal,
+): Promise<ShrinkResult & { kind: FileKind }> {
+  const { kind, mime } = detectType(source);
+
+  if (kind === "pdf") {
+    return { ...(await shrinkPdf(source, target, options, signal)), kind };
+  }
+
+  if (isImage(kind) && mime) {
+    return { ...(await shrinkImage(source, target, mime, options, signal)), kind };
+  }
+
+  return {
+    target,
+    originalSize: source.length,
+    ok: false,
+    bytes: source,
+    size: source.length,
+    rung: "passthrough",
+    textPreserved: true,
+    kind,
+    shortfall:
+      "This is not a PDF or a photo. Snug works on PDFs, JPEGs and PNGs.",
+  };
 }

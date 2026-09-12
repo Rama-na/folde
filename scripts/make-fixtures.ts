@@ -135,6 +135,78 @@ async function flateImagePdf(seed: number): Promise<Uint8Array> {
   return doc.save({ useObjectStreams: true });
 }
 
+/**
+ * A photograph, the way a phone camera produces one: smooth gradients, a subject
+ * with edges, and sensor grain. Flat colour would compress to nothing and prove
+ * the image ladder works when it does not.
+ */
+async function phonePhoto(
+  width: number,
+  height: number,
+  seed: number,
+): Promise<Uint8Array> {
+  const rand = seeded(seed);
+  const channels = 3;
+  const data = Buffer.alloc(width * height * channels);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const o = (y * width + x) * channels;
+      // A diagonal gradient standing in for lighting across the frame.
+      const light = 60 + (180 * (x + y)) / (width + height);
+      // A rectangular subject, the way a held-up document fills a photo.
+      const inSubject =
+        x > width * 0.18 &&
+        x < width * 0.82 &&
+        y > height * 0.22 &&
+        y < height * 0.78;
+      const base = inSubject ? light * 1.25 : light * 0.7;
+      const grain = (rand() - 0.5) * 26;
+      data[o] = clamp(base + grain);
+      data[o + 1] = clamp(base * 0.96 + grain);
+      data[o + 2] = clamp(base * 0.88 + grain);
+    }
+  }
+
+  const out = await sharp(data, { raw: { width, height, channels } })
+    .jpeg({ quality: 94 })
+    .toBuffer();
+  return new Uint8Array(out);
+}
+
+/** A signature: mostly white, a few dark strokes. PNG, as forms usually want. */
+async function signaturePng(seed: number): Promise<Uint8Array> {
+  const rand = seeded(seed);
+  const width = 1200;
+  const height = 400;
+  const channels = 3;
+  const data = Buffer.alloc(width * height * channels, 0xff);
+
+  let x = 80;
+  let y = height / 2;
+  for (let step = 0; step < 5200; step++) {
+    x += 1.2 + rand() * 0.9;
+    y += (rand() - 0.5) * 26;
+    if (x >= width - 40) break;
+    for (let dy = -5; dy <= 5; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        const px = Math.round(x + dx);
+        const py = Math.round(y + dy);
+        if (px < 0 || py < 0 || px >= width || py >= height) continue;
+        const o = (py * width + px) * channels;
+        data[o] = 20;
+        data[o + 1] = 24;
+        data[o + 2] = 40;
+      }
+    }
+  }
+
+  const out = await sharp(data, { raw: { width, height, channels } })
+    .png({ compressionLevel: 6 })
+    .toBuffer();
+  return new Uint8Array(out);
+}
+
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
 
@@ -163,6 +235,16 @@ async function main(): Promise<void> {
 
   // Flate-encoded image: rung 2 must skip it rather than corrupt it.
   write("flate-image.pdf", await flateImagePdf(66));
+
+  // A phone photo of a document, the commonest thing anyone uploads to a portal.
+  // 12 megapixel-ish, the way a mid-range Android camera writes it.
+  write("photo.jpg", await phonePhoto(4032, 3024, 77));
+
+  // A smaller one, for the case that is already near the limit.
+  write("photo-small.jpg", await phonePhoto(1600, 1200, 88));
+
+  // A PNG signature. Pins that PNG comes back as JPEG with a changed name.
+  write("signature.png", await signaturePng(99));
 
   // Not a PDF at all. Pins that a damaged file gets a sentence, not a stack trace.
   write("corrupt.pdf", new Uint8Array(Buffer.from("%PDF-1.7\nnot actually a pdf")));

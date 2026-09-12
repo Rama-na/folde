@@ -26,6 +26,19 @@ export interface TranscodeRequest {
   height: number;
   /** JPEG quality, 0..1. */
   quality: number;
+  /**
+   * Media type of the input.
+   *
+   * The browser decodes from a Blob and a Blob needs its type: labelling a PNG as
+   * JPEG leaves the decode to content sniffing, which mostly works and fails
+   * exactly where it matters least predictably.
+   */
+  sourceType: string;
+}
+
+export interface ImageSize {
+  width: number;
+  height: number;
 }
 
 /**
@@ -48,6 +61,14 @@ export interface ImageCodec {
     source: Uint8Array,
     request: TranscodeRequest,
   ): Promise<Uint8Array>;
+  /**
+   * Natural pixel dimensions of an image.
+   *
+   * Needed before any scale can be computed. Called once per file and cached by
+   * the caller, so a slightly expensive implementation is acceptable — but never
+   * inside the probe loop.
+   */
+  probeSize(source: Uint8Array, sourceType: string): Promise<ImageSize>;
 }
 
 /** One probe of the ladder at a given effort. */

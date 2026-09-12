@@ -31,6 +31,18 @@ reassembly fails. Plenty of government and enterprise systems reject `.zip` outr
 So Snug never produces split volumes, and attaches files loosely by default. Every
 batch is complete and openable on its own.
 
+## What it takes
+
+PDFs, JPEGs and PNGs — detected from the bytes, not the extension, because phones and
+scanner apps routinely write a file whose name does not match it. Images come back as
+JPEG (what portals specify) with their name changed to match, never upscaled, and
+never shrunk below a pixel floor — a photo that hits 50 KB and is rejected for being
+under 200x230 has solved nothing.
+
+HEIC is detected and attempted. Safari decodes it so it works on an iPhone; Chrome
+does not, and there it says which iPhone setting fixes it rather than shipping a
+multi-megabyte decoder for a case iOS mostly avoids anyway.
+
 ## How the shrinking works
 
 A ladder, climbed no further than the target requires:
@@ -81,10 +93,15 @@ npm run dev
 No jest, no vitest — `tsx` scripts, matching the sibling Thinnai repo.
 
 ```sh
-npm run test         # bytes, packing, and the ladder under Node
+npm run test         # bytes, packing, images, and the PDF ladder under Node
 npm run test:browser # the production build, driven in Chromium
 npm run test:all     # both, with a build in between
 ```
+
+`test:browser` ends with the case that started the project: 42 mixed files, 40 MB, at
+390px phone width. It currently reaches 9.9 MB in three emails — 4.9, 4.9 and 3.6 MB
+on the wire — in about 27 seconds. The pile is generated on first run
+(`npm run fixtures:pile`) and gitignored.
 
 `npm run test:browser` is not optional extra coverage. The Node suite says nothing
 about the OffscreenCanvas codec, the Web Worker, or pdf.js — and all three have

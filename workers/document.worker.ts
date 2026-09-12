@@ -1,8 +1,9 @@
 /// <reference lib="webworker" />
-import { shrinkPdf } from "@/modules/shrink";
+import { shrinkFile } from "@/modules/shrink";
 import { browserCodec } from "@/modules/shrink/codec-browser";
 import { rasterizePdf } from "@/modules/shrink/rasterize-browser";
 import { Cancelled } from "@/modules/shrink/types";
+import { outputName } from "@/lib/file-type";
 import type { FileOutcome, WorkerRequest, WorkerResponse } from "./protocol";
 
 /**
@@ -77,25 +78,46 @@ async function runJob(
         continue;
       }
 
-      const result = await shrinkPdf(
-        source,
-        target,
-        { codec: browserCodec, rasterizer: rasterizePdf },
-        controller.signal,
-      );
+      // One unreadable file must not cost the other forty-one. The whole job used
+      // to stop on the first throw, which is how a crash in the rasterizer silently
+      // truncated a run halfway and still looked like a success for the files that
+      // had already finished.
+      try {
+        const result = await shrinkFile(
+          source,
+          target,
+          { codec: browserCodec, rasterizer: rasterizePdf },
+          controller.signal,
+        );
 
-      const bytes = toTransferable(result.bytes);
-      emit(jobId, {
-        id: file.id,
-        name: file.name,
-        originalSize: result.originalSize,
-        size: result.size,
-        bytes,
-        rung: result.rung,
-        ok: result.ok,
-        textPreserved: result.textPreserved,
-        shortfall: result.shortfall,
-      });
+        emit(jobId, {
+          id: file.id,
+          name: outputName(file.name, result.kind),
+          originalSize: result.originalSize,
+          size: result.size,
+          bytes: toTransferable(result.bytes),
+          rung: result.rung,
+          ok: result.ok,
+          textPreserved: result.textPreserved,
+          shortfall: result.shortfall,
+        });
+      } catch (err) {
+        if (err instanceof Cancelled) throw err;
+        emit(jobId, {
+          id: file.id,
+          name: file.name,
+          originalSize: source.byteLength,
+          size: source.byteLength,
+          bytes: toTransferable(source),
+          rung: "passthrough",
+          ok: false,
+          textPreserved: true,
+          shortfall:
+            err instanceof Error && err.message
+              ? `This file could not be processed: ${err.message}`
+              : "This file could not be processed.",
+        });
+      }
     }
 
     if (!controller.signal.aborted) {

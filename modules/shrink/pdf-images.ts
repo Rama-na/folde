@@ -100,6 +100,7 @@ export async function openDownsampleSession(
             width,
             height,
             quality: point.quality,
+            sourceType: "image/jpeg",
           });
         } catch {
           // A single undecodable image must not fail the whole document. Leaving

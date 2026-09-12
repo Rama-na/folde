@@ -1,4 +1,4 @@
-import type { ImageCodec, TranscodeRequest } from "./types";
+import type { ImageCodec, ImageSize, TranscodeRequest } from "./types";
 
 /**
  * The browser image codec, built on OffscreenCanvas so it runs inside a Web Worker
@@ -10,11 +10,22 @@ import type { ImageCodec, TranscodeRequest } from "./types";
  * The browser's own JPEG encoder is built in, already optimised, and free.
  */
 export const browserCodec: ImageCodec = {
+  async probeSize(source: Uint8Array, sourceType: string): Promise<ImageSize> {
+    const bitmap = await createImageBitmap(
+      new Blob([toArrayBuffer(source)], { type: sourceType }),
+    );
+    try {
+      return { width: bitmap.width, height: bitmap.height };
+    } finally {
+      bitmap.close();
+    }
+  },
+
   async transcodeJpeg(
     source: Uint8Array,
-    { width, height, quality }: TranscodeRequest,
+    { width, height, quality, sourceType }: TranscodeRequest,
   ): Promise<Uint8Array> {
-    const blob = new Blob([toArrayBuffer(source)], { type: "image/jpeg" });
+    const blob = new Blob([toArrayBuffer(source)], { type: sourceType });
 
     // Decoding straight to the target size lets the browser skip most of the
     // full-resolution work, and avoids ever holding a full-size pixel buffer.
