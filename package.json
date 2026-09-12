@@ -13,7 +13,8 @@
     "test": "npm run test:bytes && npm run test:pack && npm run test:shrink",
     "test:pack": "tsx scripts/test-pack.ts",
     "test:browser": "tsx scripts/test-browser.ts",
-    "test:all": "npm run test && npm run build && npm run test:browser"
+    "test:all": "npm run test && npm run build && npm run test:browser",
+    "prebuild": "tsx scripts/copy-pdfjs-worker.ts"
   },
   "dependencies": {
     "fflate": "^0.8.3",

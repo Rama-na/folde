@@ -51,6 +51,17 @@ export interface DeliveryStrategy {
  */
 const MIN_RETAINED_FRACTION = 0.2;
 
+/**
+ * Below this, shrinking a file cannot change anything worth changing.
+ *
+ * Handing every file a proportional target means an 8 KB text document gets asked
+ * to reach 5 KB — which no amount of image downsampling achieves, so the ladder
+ * climbs to rasterizing and destroys its selectable text to save three kilobytes
+ * that could never have altered the batch count. Files whose whole contribution is
+ * noise are left exactly as they are.
+ */
+const MIN_WORTHWHILE_SAVING = 64 * 1024;
+
 export function planDelivery(
   items: readonly PackItem[],
   options: PackOptions,
@@ -135,8 +146,14 @@ function proportionalTargets(
     // For a file that is over that ceiling this is not an optimisation, it is the
     // difference between sendable and not.
     const share = Math.min(Math.floor(item.size * ratio), solo);
-    // A file already at or under its share needs no work at all.
-    targets.set(item.id, share >= item.size ? null : share);
+
+    // A file already at or under its share needs no work at all. Nor does one
+    // whose best case saves too little to matter — unless it is over the solo
+    // ceiling, in which case it must shrink however little that buys.
+    const pointless =
+      share >= item.size ||
+      (item.size - share < MIN_WORTHWHILE_SAVING && item.size <= solo);
+    targets.set(item.id, pointless ? null : share);
   }
   return targets;
 }

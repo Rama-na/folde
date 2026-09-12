@@ -68,6 +68,28 @@ function formatMB(bytes: number): string {
   return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
 }
 
+/**
+ * Nothing broke.
+ *
+ * The suite once passed a whole run while the page was showing a worker crash and
+ * silently dropping half the files — every individual assertion was true of the
+ * part that did work. This is the check that makes that impossible.
+ */
+async function assertClean(page: Page, where: string): Promise<void> {
+  // An honest "could not reach the limit" is a result, not a crash; anything else
+  // in the failure colour is the page telling the user something broke.
+  const errors = page
+    .locator('[class*="border-wont"]')
+    .filter({ hasNotText: "could not reach the limit" })
+    .filter({ hasNotText: "still too large to send" });
+
+  const count = await errors.count();
+  // Only read the text when there is something to read — asking an empty locator
+  // for its content waits for an element that is never going to arrive.
+  const detail = count > 0 ? ((await errors.first().textContent()) ?? "") : "";
+  check(`${where}: no error banner on the page`, count === 0, detail.trim());
+}
+
 async function run(page: Page): Promise<void> {
   console.log("\nbrowser: a 300 DPI scan to a 200 KB portal limit");
   await page.goto(ORIGIN);
@@ -113,6 +135,49 @@ async function run(page: Page): Promise<void> {
     bytes.subarray(0, 5).toString() === "%PDF-",
   );
   check("compression under a phone-ish budget of time", elapsed < 60_000, `${elapsed}ms`);
+  await assertClean(page, "portal target");
+
+  // Force rung 3, and force it somewhere it can actually succeed.
+  //
+  // flate-image.pdf holds one full-page Flate-encoded image. Rung 2 skips those on
+  // purpose — re-encoding one risks inverting the colours — so rasterizing is the
+  // only route to the target, and a single page comfortably reaches 200 KB. This
+  // is the scenario that exercises pdf.js end to end; a text document with an
+  // unreachable target only ever proves the refusal path.
+  console.log("\nbrowser: rasterizing, the last resort");
+  await page.goto(ORIGIN);
+  await upload(page, ["flate-image.pdf"]);
+  await page.getByRole("tab", { name: "Uploading to a portal" }).click();
+  await page.getByRole("button", { name: /^200 KB/ }).click();
+  await page.getByRole("button", { name: "Make it fit" }).click();
+  await page.locator("p", { hasText: "→" }).first().waitFor({ timeout: 180_000 });
+  await assertClean(page, "rasterize");
+
+  check(
+    "rasterizing actually ran and reached the target",
+    (await page.getByText("converted to images").count()) > 0,
+    (await page.getByText("could not reach the limit").count()) > 0
+      ? "it refused instead — pdf.js is not working"
+      : "no rasterize notice appeared",
+  );
+  check(
+    "and the user is told their text is no longer selectable",
+    (await page.getByText("no longer be selected or searched").count()) > 0,
+  );
+
+  const rasterDownload = page.waitForEvent("download", { timeout: 30_000 });
+  await page.getByRole("button", { name: "Save" }).first().click();
+  const rasterBytes = readFileSync(await (await rasterDownload).path());
+  console.log(`  2.9 MB Flate-image PDF rasterized to ${rasterBytes.length} bytes`);
+  check(
+    "the rasterized file is genuinely under 200 KB",
+    rasterBytes.length <= 200_000,
+    `${rasterBytes.length} bytes`,
+  );
+  check(
+    "and is a valid PDF",
+    rasterBytes.subarray(0, 5).toString() === "%PDF-",
+  );
 
   console.log("\nbrowser: a pile of files batched for a 5 MB email cap");
   await page.goto(ORIGIN);
@@ -168,6 +233,17 @@ async function run(page: Page): Promise<void> {
   console.log(`  batches: ${wireSizes.map((s) => s.trim()).join(", ")}`);
 
   check("at least one batch was produced", wireSizes.length > 0);
+
+  // Every file that went in has to come back out. The worker stops the whole job
+  // on an error, so a crash midway through shows up as a short results list —
+  // which is exactly how a broken rasterizer hid behind passing assertions.
+  const returned = (await page.locator("section", { hasText: "→" }).first().textContent()) ?? "";
+  check(
+    `all ${pile.length} files came back from the worker`,
+    returned.includes(`${pile.length} files`),
+    returned.trim(),
+  );
+  await assertClean(page, "email batching");
   check(
     "every batch is reported under the 5 MB cap",
     wireSizes.every((label) => {

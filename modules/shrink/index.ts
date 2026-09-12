@@ -164,7 +164,10 @@ export async function shrinkPdf(
     const rasterized = await searchForTarget(
       rasterProbe,
       target,
-      { maxProbes: options.maxProbes },
+      // Fewer probes than rung 2 allows. Every probe here re-renders every page,
+      // which is orders of magnitude dearer than re-encoding an image, so the
+      // last few percent of precision is not worth the wait on a phone.
+      { maxProbes: options.maxProbes ?? 4 },
       signal,
     );
     if (rasterized.best) {
