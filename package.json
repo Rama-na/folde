@@ -6,13 +6,21 @@
     "dev": "next dev",
     "build": "next build",
     "start": "node .next/standalone/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "fixtures": "tsx scripts/make-fixtures.ts",
+    "test:shrink": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-shrink.ts",
+    "test:bytes": "tsx scripts/test-bytes.ts",
+    "test": "npm run test:bytes && npm run test:shrink"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "next": "^15.5.23",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
