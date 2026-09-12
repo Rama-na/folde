@@ -348,6 +348,51 @@ console.log("\npack: files too big to send alone still get compressed");
   );
 }
 
+console.log("\npack: small files are not given targets they cannot meet");
+{
+  // A 161 KB text document inside a 19 MB pile contributes under one percent of
+  // the problem. Giving it a proportional target means it fails — and a results
+  // screen that opens with a failure about a file that was never a problem is
+  // worse than the handful of kilobytes it was chasing.
+  const pile: PackItem[] = [
+    { id: "heavy", name: "scan-heavy.pdf", size: 14_200_000 },
+    { id: "scan", name: "scan-300dpi.pdf", size: 5_400_000 },
+    { id: "text", name: "text.pdf", size: 8_800 },
+    { id: "notes", name: "many-pages.pdf", size: 161_800 },
+  ];
+  const strategy = planDelivery(pile, { cap: 5 * MB });
+
+  check(
+    "the tiny text file is left alone",
+    strategy.targets.get("text") === null,
+    String(strategy.targets.get("text")),
+  );
+  check(
+    "so is the 161 KB one — under 1% of the pile",
+    strategy.targets.get("notes") === null,
+    String(strategy.targets.get("notes")),
+  );
+  check(
+    "while the two large scans still get targets",
+    strategy.targets.get("heavy") !== null && strategy.targets.get("scan") !== null,
+  );
+
+  // Leaving them alone must not cost an extra email.
+  const achieved = pile.map((f) => {
+    const t = strategy.targets.get(f.id);
+    return { ...f, size: t === null || t === undefined ? f.size : t };
+  });
+  const plan = planBatches(achieved, { cap: 5 * MB });
+  check(
+    "and the batch count is unaffected",
+    plan.batches.length === strategy.targetBatches,
+    `${plan.batches.length} vs planned ${strategy.targetBatches}`,
+  );
+  console.log(
+    `  targets: ${pile.map((f) => `${f.name}=${strategy.targets.get(f.id) ?? "untouched"}`).join(", ")}`,
+  );
+}
+
 console.log(
   failures === 0
     ? "\nAll packing checks passed.\n"

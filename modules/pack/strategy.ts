@@ -57,10 +57,18 @@ const MIN_RETAINED_FRACTION = 0.2;
  * Handing every file a proportional target means an 8 KB text document gets asked
  * to reach 5 KB — which no amount of image downsampling achieves, so the ladder
  * climbs to rasterizing and destroys its selectable text to save three kilobytes
- * that could never have altered the batch count. Files whose whole contribution is
- * noise are left exactly as they are.
+ * that could never have altered the batch count.
+ *
+ * Worse than the wasted work is what the user sees. A 161 KB text file inside a
+ * 19 MB pile gets a target it cannot meet, and the results screen opens with a
+ * failure — about a file that was never a problem, in a run that otherwise
+ * succeeded. Manufacturing an alarm is its own kind of bug.
+ *
+ * So the floor scales with the batch budget as well: a saving has to be worth
+ * something against the size of a message, not merely large in absolute terms.
  */
 const MIN_WORTHWHILE_SAVING = 64 * 1024;
+const MIN_WORTHWHILE_FRACTION = 0.05;
 
 export function planDelivery(
   items: readonly PackItem[],
@@ -140,6 +148,11 @@ function proportionalTargets(
   const ratio = budget / total;
   if (ratio < MIN_RETAINED_FRACTION) return null;
 
+  const worthwhile = Math.max(
+    MIN_WORTHWHILE_SAVING,
+    perBatch * MIN_WORTHWHILE_FRACTION,
+  );
+
   const targets = new Map<string, number | null>();
   for (const item of items) {
     // The proportional share, but never above what a lone attachment can weigh.
@@ -152,7 +165,7 @@ function proportionalTargets(
     // ceiling, in which case it must shrink however little that buys.
     const pointless =
       share >= item.size ||
-      (item.size - share < MIN_WORTHWHILE_SAVING && item.size <= solo);
+      (item.size - share < worthwhile && item.size <= solo);
     targets.set(item.id, pointless ? null : share);
   }
   return targets;

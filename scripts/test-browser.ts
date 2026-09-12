@@ -245,6 +245,11 @@ async function run(page: Page): Promise<void> {
   );
   await assertClean(page, "email batching");
   check(
+    "no file is reported as failing when the batches all worked",
+    (await page.getByText("could not reach the limit").count()) === 0,
+    (await page.locator("section", { hasText: "could not reach the limit" }).first().textContent().catch(() => "")) ?? "",
+  );
+  check(
     "every batch is reported under the 5 MB cap",
     wireSizes.every((label) => {
       const mb = /([\d.]+)\s*MB on the wire/.exec(label);
