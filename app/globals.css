@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #fdfcfa;
+  --color-surface: #ffffff;
+  --color-edge: #e8e3dc;
+  --color-ink: #1a1714;
+  --color-ink-soft: #6b635a;
+  --color-accent: #c2650a;
+  --color-accent-ink: #ffffff;
+  --color-fits: #2f7d32;
+  --color-wont: #a8321f;
+
+  --radius-card: 10px;
+  --radius-drop: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-canvas: #141210;
+    --color-surface: #1e1b18;
+    --color-edge: #332e29;
+    --color-ink: #f5f1ec;
+    --color-ink-soft: #a39a90;
+    --color-accent: #e8873a;
+    --color-accent-ink: #1a1714;
+    --color-fits: #6cc070;
+    --color-wont: #e8705a;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* File sizes sit in columns and recompute in place; proportional digits make
+   that jitter unreadable. See DESIGN.md. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
