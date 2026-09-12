@@ -1,4 +1,10 @@
-import { type PackItem, type PackOptions, planBatches, weigh } from "./index";
+import {
+  largestSendableFile,
+  planBatches,
+  weigh,
+  type PackItem,
+  type PackOptions,
+} from "./index";
 
 /**
  * Decide how hard to shrink, before shrinking anything.
@@ -49,7 +55,14 @@ export function planDelivery(
   items: readonly PackItem[],
   options: PackOptions,
 ): DeliveryStrategy {
-  const untouched = planBatches(items, options).batches.length;
+  const initial = planBatches(items, options);
+
+  // Files too large to travel even alone are excluded from the batches — they do
+  // not fit in any of them. They still have to be counted here: they are the files
+  // that most need compressing, and leaving them out of the total is how a 19 MB
+  // pile gets mistaken for one that already fits in a single email.
+  const unsendable = initial.oversized.length;
+  const untouched = initial.batches.length + unsendable;
 
   const leaveAlone = (): DeliveryStrategy => ({
     batchesIfUntouched: untouched,
@@ -61,11 +74,13 @@ export function planDelivery(
         : "These files are already as small as they usefully go.",
   });
 
-  if (items.length === 0 || untouched <= 1) return leaveAlone();
+  if (items.length === 0) return leaveAlone();
+  // One batch and nothing stranded is the only state that needs no work at all.
+  if (untouched <= 1 && unsendable === 0) return leaveAlone();
 
   // Try for progressively fewer messages, stopping at the most ambitious target
   // that does not demand shredding the documents to get there.
-  for (let k = 1; k < untouched; k++) {
+  for (let k = 1; k <= untouched; k++) {
     const targets = proportionalTargets(items, k, options);
     if (!targets) continue;
 
@@ -102,15 +117,24 @@ function proportionalTargets(
   const perBatch = payloadCapacity(options.cap, items.length, zip);
   const budget = perBatch * k;
 
+  // No file may exceed this, whatever the totals say, or it cannot be sent at all.
+  const solo = largestSendableFile(options.cap, zip);
+  const stranded = items.some((i) => i.size > solo);
+
   const total = items.reduce((n, i) => n + i.size, 0);
-  if (total <= budget) return new Map(items.map((i) => [i.id, null]));
+  if (total <= budget && !stranded) {
+    return new Map(items.map((i) => [i.id, null]));
+  }
 
   const ratio = budget / total;
   if (ratio < MIN_RETAINED_FRACTION) return null;
 
   const targets = new Map<string, number | null>();
   for (const item of items) {
-    const share = Math.floor(item.size * ratio);
+    // The proportional share, but never above what a lone attachment can weigh.
+    // For a file that is over that ceiling this is not an optimisation, it is the
+    // difference between sendable and not.
+    const share = Math.min(Math.floor(item.size * ratio), solo);
     // A file already at or under its share needs no work at all.
     targets.set(item.id, share >= item.size ? null : share);
   }

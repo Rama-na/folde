@@ -13,6 +13,7 @@ import {
   planBatches,
   weigh,
 } from "../modules/pack";
+import { largestSendableFile } from "../modules/pack";
 import { planDelivery } from "../modules/pack/strategy";
 
 let failures = 0;
@@ -283,6 +284,67 @@ console.log("\npack: deciding how hard to shrink");
   console.log(
     `  after shrinking: ${finalPlan.batches.length} emails ` +
       `(${formatBytes(achieved.reduce((n, i) => n + i.size, 0))} total)`,
+  );
+}
+
+console.log("\npack: files too big to send alone still get compressed");
+{
+  // The bug this pins: a file over the cap is excluded from the batches, because
+  // it fits in none of them. Counting only what got packed made a 19.6 MB pile
+  // read as "already fits in one email" — and the files that most needed
+  // shrinking were the very ones left out of the decision.
+  const pile: PackItem[] = [
+    { id: "big", name: "scan-heavy.pdf", size: 14_200_000 },
+    { id: "mid", name: "scan.pdf", size: 5_400_000 },
+    { id: "s1", name: "text.pdf", size: 8_800 },
+    { id: "s2", name: "notes.pdf", size: 161_800 },
+  ];
+  const cap = 5 * MB;
+  const before = planBatches(pile, { cap });
+  check(
+    "the two large files are indeed unpackable as they stand",
+    before.oversized.length === 2,
+    `${before.oversized.length} oversized`,
+  );
+
+  const strategy = planDelivery(pile, { cap });
+  check(
+    "19.6 MB over a 5 MB cap is not called a single email",
+    !/already fits in one email/i.test(strategy.reason),
+    strategy.reason,
+  );
+  check(
+    "the oversized files are given real targets",
+    strategy.targets.get("big") !== null && strategy.targets.get("mid") !== null,
+  );
+
+  // Every target must be small enough to travel as a lone attachment, or the
+  // file still cannot be sent however the batching falls out.
+  const solo = largestSendableFile(cap);
+  check(
+    "no target exceeds what a lone attachment can weigh",
+    [...strategy.targets.values()].every((t) => t === null || t <= solo),
+    `solo budget ${formatBytes(solo)}`,
+  );
+
+  // And the plan has to actually work once the ladder hits those targets.
+  const achieved = pile.map((f) => {
+    const t = strategy.targets.get(f.id);
+    return { ...f, size: t === null || t === undefined ? f.size : t };
+  });
+  const after = planBatches(achieved, { cap });
+  check(
+    "nothing is stranded once the targets are met",
+    after.oversized.length === 0,
+    `${after.oversized.length} still oversized`,
+  );
+  check(
+    "and every batch is under the cap",
+    after.batches.every((b) => b.encodedBytes <= cap),
+  );
+  console.log(
+    `  ${formatBytes(pile.reduce((n, i) => n + i.size, 0))} over a 5 MB cap -> ` +
+      `${after.batches.length} email(s); reason: "${strategy.reason}"`,
   );
 }
 

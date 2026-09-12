@@ -156,8 +156,25 @@ function admits(
 }
 
 function fitsAlone(size: number, cap: number, zipped: boolean): boolean {
-  const single: PackItem = { id: "", name: "", size };
-  return weigh([single], zipped) <= cap;
+  return size <= largestSendableFile(cap, zipped);
+}
+
+/**
+ * The largest a single file can be and still be sendable on its own.
+ *
+ * The ceiling every file has to clear regardless of how the batching works out: a
+ * file above this cannot travel in any message, however few others accompany it. It
+ * is therefore also the hard upper bound on any compression target.
+ */
+export function largestSendableFile(cap: number, zipped = false): number {
+  let lo = 0;
+  let hi = cap;
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (weigh([{ id: "", name: "", size: mid }], zipped) <= cap) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 function sumSizes(items: readonly PackItem[]): number {
