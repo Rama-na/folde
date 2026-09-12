@@ -10,7 +10,8 @@
     "fixtures": "tsx scripts/make-fixtures.ts",
     "test:shrink": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-shrink.ts",
     "test:bytes": "tsx scripts/test-bytes.ts",
-    "test": "npm run test:bytes && npm run test:shrink"
+    "test": "npm run test:bytes && npm run test:pack && npm run test:shrink",
+    "test:pack": "tsx scripts/test-pack.ts"
   },
   "dependencies": {
     "fflate": "^0.8.3",
