@@ -64,7 +64,7 @@ function SequenceScrolled() {
     <section
       ref={track}
       aria-label="What happens to a folder of documents"
-      className="relative mt-20 h-[260vh] sm:mt-28"
+      className="relative mt-20 h-[240vh] sm:mt-28"
     >
       {/*
         Clipped sideways, not hidden. A card nudged 30px out of line on a 390px
@@ -73,7 +73,12 @@ function SequenceScrolled() {
         this into a scroll container, which is the one thing that would stop the
         stage inside it from sticking. `clip` removes the overflow without that.
       */}
-      <div className="sticky top-0 flex min-h-dvh flex-col justify-center overflow-x-clip py-12">
+      {/*
+        Sitting above centre rather than on it. A pinned stage that centres its
+        content leaves half a viewport of empty page under the last frame before the
+        next section arrives, which reads as the page having ended.
+      */}
+      <div className="sticky top-0 flex min-h-dvh flex-col justify-center overflow-x-clip pb-[14vh] pt-10">
         <Acts progress={scrollYProgress} />
         <Stage progress={scrollYProgress} />
       </div>
