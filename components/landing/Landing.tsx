@@ -15,6 +15,7 @@ import {
   PORTAL_PHOTO,
   STORY,
 } from "@/lib/story";
+import { NeonReveal } from "@/components/motion/NeonReveal";
 import { Sequence } from "@/components/landing/Sequence";
 import { SmoothScroll } from "@/components/landing/SmoothScroll";
 
@@ -94,27 +95,36 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 function Measured() {
   return (
     <Band>
-      <Eyebrow>Measured, not estimated</Eyebrow>
-      <p className="tabular mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-3xl font-semibold tracking-tight sm:text-4xl">
-        <span className="text-ink-soft">{formatBytes(MEASURED.before)}</span>
-        <span aria-hidden className="text-ink-soft/50">
-          →
-        </span>
-        <span className="text-fits">{formatBytes(MEASURED.after)}</span>
-      </p>
-      <p className="mt-3 max-w-prose leading-relaxed text-ink-soft">
-        {MEASURED.files} files — scans, forms and camera photographs — brought
-        under a {formatBytes(STORY.cap)} attachment limit and packed into{" "}
-        {MEASURED.emails} emails. That run happens on every change to this
-        codebase, in a real browser at phone width, and the build fails if a
-        single batch comes back over the limit.
-      </p>
-      <p className="mt-3 max-w-prose leading-relaxed text-ink-soft">
-        Which is the whole promise. Nothing here reports a size it has not
-        weighed: the output bytes are counted, checked against your number, and
-        only then shown to you. If a file cannot reach the limit, it says so and
-        tells you the closest it got.
-      </p>
+      {/*
+        The one panel on the site that is lit rather than printed. The bar crosses
+        the claim just before the eye settles on it, which is the reading being
+        taken — the same thing the paragraph underneath says in words.
+      */}
+      <NeonReveal className="p-5 text-stage-ink sm:p-8">
+        <p className="text-sm font-medium text-stage-accent">
+          Measured, not estimated
+        </p>
+        <p className="tabular mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-3xl font-semibold tracking-tight sm:text-4xl">
+          <span className="text-stage-soft">{formatBytes(MEASURED.before)}</span>
+          <span aria-hidden className="text-stage-soft/50">
+            →
+          </span>
+          <span className="text-stage-fits">{formatBytes(MEASURED.after)}</span>
+        </p>
+        <p className="mt-3 max-w-prose leading-relaxed text-stage-soft">
+          {MEASURED.files} files — scans, forms and camera photographs — brought
+          under a {formatBytes(STORY.cap)} attachment limit and packed into{" "}
+          {MEASURED.emails} emails. That run happens on every change to this
+          codebase, in a real browser at phone width, and the build fails if a
+          single batch comes back over the limit.
+        </p>
+        <p className="mt-3 max-w-prose leading-relaxed text-stage-soft">
+          Which is the whole promise. Nothing here reports a size it has not
+          weighed: the output bytes are counted, checked against your number, and
+          only then shown to you. If a file cannot reach the limit, it says so and
+          tells you the closest it got.
+        </p>
+      </NeonReveal>
     </Band>
   );
 }

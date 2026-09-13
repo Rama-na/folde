@@ -669,6 +669,89 @@ async function runDarkDetail(browser: Browser): Promise<void> {
  * archive really collapses the batch to one attachment, and the thing that lands is
  * a ZIP that opens and still contains every file that went into it.
  */
+/**
+ * The lit panel, after the light has gone.
+ *
+ * A reveal is a way of hiding something first, which makes it the one effect on this
+ * page that can leave the site worse than it found it: an observer that never fires,
+ * a tab restored mid-sweep, a browser that throttles the animation, and the claim is
+ * sitting under a wash nobody can read. So this asserts the two things that keep it
+ * honest — the overlays are gone when it is done, not merely transparent, and the
+ * colours it left behind clear AA against the panel rather than against the page.
+ *
+ * The general contrast check cannot see this: it walks buttons and links, and the
+ * panel has neither.
+ */
+async function assertNeonClears(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const label = [...document.querySelectorAll("p")].find((p) =>
+      p.textContent?.includes("Measured, not estimated"),
+    );
+    label?.closest("section")?.scrollIntoView({ block: "center" });
+  });
+  await page.waitForTimeout(2_400);
+
+  const state = (await page.evaluate(`(() => {
+    function luminance(color) {
+      var parts = (color.match(/[\\d.]+/g) || ["0", "0", "0"]).map(Number);
+      function channel(c) {
+        c = c / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      }
+      return 0.2126 * channel(parts[0]) + 0.7152 * channel(parts[1]) + 0.0722 * channel(parts[2]);
+    }
+    function ratio(a, b) {
+      var x = luminance(a), y = luminance(b);
+      var hi = Math.max(x, y), lo = Math.min(x, y);
+      return (hi + 0.05) / (lo + 0.05);
+    }
+    var label = Array.prototype.slice.call(document.querySelectorAll("p")).filter(function (p) {
+      return p.textContent && p.textContent.indexOf("Measured, not estimated") >= 0;
+    })[0];
+    var panel = label.parentElement;
+    var ground = getComputedStyle(panel).backgroundColor;
+    var out = [];
+    var nodes = panel.querySelectorAll("p, span");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (!el.textContent || !el.textContent.trim()) continue;
+      if (el.getAttribute("aria-hidden") === "true") continue;
+      var colour = getComputedStyle(el).color;
+      // Only plain rgb() can be scored by the arithmetic above. Anything else — a
+      // half-opacity token computes to oklab() — is skipped rather than silently
+      // parsed into the wrong three numbers, which is exactly how this check first
+      // reported a flat 1.00:1 for every word on the panel.
+      if (colour.indexOf("rgb") !== 0) continue;
+      out.push({
+        label: el.textContent.trim().slice(0, 26),
+        ratio: ratio(colour, ground)
+      });
+    }
+    return { ground: ground, text: out, bars: document.querySelectorAll(".neon-bar").length };
+  })()`)) as {
+    ground: string;
+    text: Array<{ label: string; ratio: number }>;
+    bars: number;
+  };
+
+  check(
+    "the neon pass finishes and takes its overlays with it",
+    state.bars === 0,
+    `${state.bars} still mounted`,
+  );
+
+  const dim = state.text.filter((t) => t.ratio < 4.5);
+  console.log(
+    `  panel ${state.ground}: ${state.text.length} runs of text, ` +
+      `lowest ${Math.min(...state.text.map((t) => t.ratio)).toFixed(2)}:1`,
+  );
+  check(
+    "and every word it lit clears WCAG AA against the panel",
+    state.text.length > 0 && dim.length === 0,
+    dim.map((d) => `"${d.label}" at ${d.ratio.toFixed(2)}:1`).join(", "),
+  );
+}
+
 async function runZip(browser: Browser): Promise<void> {
   console.log("\nbrowser: choosing the ZIP actually delivers a ZIP");
 
@@ -863,6 +946,8 @@ async function runLanding(browser: Browser): Promise<void> {
       small.join(", "),
     );
 
+    await assertNeonClears(page);
+
     await page.goto(ORIGIN);
     await upload(page, ["text.pdf"]);
     await page.getByText("1 file", { exact: false }).first().waitFor();
@@ -909,6 +994,18 @@ async function runLanding(browser: Browser): Promise<void> {
       "and the before and after of each file is stated, not animated",
       (await page2.getByText(formatBytes(STORY.files[0].before)).count()) > 0 &&
         (await page2.getByText(formatBytes(STORY.files[0].after)).count()) > 0,
+    );
+    // The neon pass is motion, so under this budget it must not be built at all —
+    // not mounted and left transparent, not there and stopped. Simply absent.
+    await page2.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await settle(page2);
+    check(
+      "the neon pass is never constructed",
+      (await page2.locator(".neon-bar").count()) === 0,
+    );
+    check(
+      "and the panel it would have crossed is readable anyway",
+      await page2.getByText("Measured, not estimated").isVisible(),
     );
     const overflow = await page2.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

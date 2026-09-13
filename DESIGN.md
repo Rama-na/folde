@@ -35,6 +35,15 @@ somebody uploading a PAN card. More usefully it leaves green alone.
 | `accent-wash` | `#eef1fe` | `#18203a` | the plan, the chosen preset, a packed part |
 | `fits` | `#0f7a3d` | `#4ade80` | a size that has been **measured** |
 | `wont` | `#c02617` | `#ff7a6b` | an honest refusal |
+| `stage` | `#080b11` | `#111825` | the one inverted panel, on the measured claim |
+| `stage-ink` / `-soft` / `-edge` | — | — | text and hairlines on that panel |
+| `stage-accent` / `-fits` | `#6f8dff` / `#4ade80` | same | accent and green **at the value a dark ground requires** |
+
+The stage exists because a glow is light added to darkness: on `canvas` the neon pass
+reads as a smudge. It keeps the dark theme's accent and green in both themes because
+the panel is dark in both — cobalt on that ground is 2.8:1 and the light green is
+3.6:1, so neither passes. Still one accent; the same accent at a legible value. Used
+once, because a second inverted panel makes it a style rather than an emphasis.
 
 One accent colour. If a second colour appears it is carrying meaning (`fits`,
 `wont`), never decoration — a green brand would blur the only moment that matters.
@@ -82,6 +91,7 @@ Concretely, what is allowed to move and why:
 | Landing cards straightening | organisation | The untidy folder becoming a list |
 | Landing sizes falling | transformation | Each file pushed only as far as needed |
 | Landing parts closing around rows | sending | The boundary of one message |
+| The neon pass over the measured claim | transformation | A reading being taken — a scanner head crossing a page, lighting what it has read |
 
 Everything else is a 150ms CSS transition on a state change.
 
@@ -89,6 +99,19 @@ Things that were considered and are **not** here: parallax, particle fields, aur
 or gradient backgrounds, magnetic buttons, cursor followers, marquees, anything that
 loops, and section bands that rise into view. The last one was built and removed —
 a section sliding up 16px communicates that a section exists.
+
+The neon pass (`components/motion/NeonReveal.tsx`) is the closest thing here to an
+effect for its own sake, and it is allowed on one condition: it is a **measuring
+pass**, not a sweep. It crosses the claim about measurement at the moment that claim
+is made, and what is behind it is lit because it has been read. Move it somewhere it
+does not mean that and it is decoration, and it goes. It runs once, never on a loop,
+and it is not built at all under a reduced-motion or Save-Data budget.
+
+**A reveal is a way of hiding something first**, which makes it the only effect on
+the site that can leave the page worse than it found it — an observer that never
+fires, a tab restored mid-sweep, and the claim sits under a wash nobody can read. So
+the overlays are removed from the tree when the pass completes rather than left at
+zero opacity, and the suite asserts both that and the contrast of what was lit.
 
 **Never show a progress bar that does not track real progress.** A fake bar during a
 60-second compression is a lie the user can feel.
