@@ -95,6 +95,49 @@ export interface ShrinkResult extends Attempt {
   shortfall?: string;
 }
 
+/** Called as each page is rendered, so a long pass can say where it has got to. */
+export type PageProgress = (page: number, of: number) => void;
+
+/** One page, drawn. Dimensions are the page's own, in points, not the image's. */
+export interface RenderedPage {
+  /** 1-based. */
+  page: number;
+  of: number;
+  /** JPEG bytes of the rendered page. */
+  bytes: Uint8Array;
+  widthPt: number;
+  heightPt: number;
+}
+
+/**
+ * Draw every page of a PDF, handing each one over as it is finished.
+ *
+ * Browser only — it needs a PDF renderer and a canvas — so it is injected wherever
+ * it is used, which keeps everything above it testable under Node.
+ *
+ * Pages are handed over one at a time rather than returned as an array on purpose: a
+ * 120-page scan at 300 DPI is hundreds of megabytes of JPEG, and a caller that only
+ * needs to write each one out should never be holding them all.
+ */
+export type RenderPages = (
+  source: Uint8Array,
+  options: {
+    dpi: number;
+    quality: number;
+    /**
+     * Called as each page begins, before any of the work.
+     *
+     * Separate from the per-page handler below, which necessarily fires after a
+     * page is drawn. On a 120-page document the difference is whether the first
+     * message appears immediately or half a second in, and whether the number on
+     * screen is the page being worked on or the last one finished.
+     */
+    onStart?: PageProgress;
+  },
+  onPage: (rendered: RenderedPage) => void | Promise<void>,
+  signal?: AbortSignal,
+) => Promise<void>;
+
 export class Cancelled extends Error {
   constructor() {
     super("Cancelled");

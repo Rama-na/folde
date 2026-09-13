@@ -12,6 +12,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { cpSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { unzipSync } from "fflate";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { formatBytes } from "../lib/bytes";
@@ -882,7 +883,7 @@ async function runLanding(browser: Browser): Promise<void> {
     check(
       "the drop zone is above the argument for it",
       (await page.locator("#drop").boundingBox())!.y <
-        (await page.getByText("One job, finished.").boundingBox())!.y,
+        (await page.getByText("The usual tools are here").boundingBox())!.y,
     );
 
     const overflow = await page.evaluate(
@@ -953,7 +954,7 @@ async function runLanding(browser: Browser): Promise<void> {
     await page.getByText("1 file", { exact: false }).first().waitFor();
     check(
       "and all of it gets out of the way once there are files to work on",
-      (await page.getByText("One job, finished.").count()) === 0,
+      (await page.getByText("The usual tools are here").count()) === 0,
     );
     await assertClean(page, "the landing");
   } finally {
@@ -1115,6 +1116,262 @@ async function runSplit(browser: Browser): Promise<void> {
   }
 }
 
+/**
+ * The tools, driven the way somebody would.
+ *
+ * The engine has its own suite; what this covers is the half that suite cannot —
+ * the worker plumbing, pdf.js rendering thumbnails inside a second worker, and the
+ * interface actually wiring a choice to a file on disk.
+ *
+ * It also guards the rule the whole information architecture rests on: the size job
+ * stays the front door. Every one of these journeys begins with the target picker
+ * already on screen, and the tools sit underneath it.
+ */
+/**
+ * No control is scissored off by something above it.
+ *
+ * Height rules and horizontal-scroll checks both pass happily while a button sits
+ * half outside a card with `overflow-hidden` on it. The page grid did precisely
+ * that at phone width, and the only reason it was caught is that a screenshot was
+ * looked at rather than assumed.
+ */
+async function assertNothingClipped(page: Page, where: string): Promise<void> {
+  const clipped = (await page.evaluate(`(() => {
+    var out = [];
+    var nodes = document.querySelectorAll("button, input, select, a");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      var parent = el.parentElement;
+      while (parent && parent !== document.body) {
+        var style = getComputedStyle(parent);
+        if (style.overflow !== "visible" || style.overflowX !== "visible" || style.overflowY !== "visible") {
+          var box = parent.getBoundingClientRect();
+          if (r.right > box.right + 1 || r.left < box.left - 1 || r.bottom > box.bottom + 1 || r.top < box.top - 1) {
+            out.push((el.getAttribute("aria-label") || el.textContent || el.tagName).trim().slice(0, 28));
+            break;
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
+    return out;
+  })()`)) as string[];
+
+  check(
+    `${where}: no control is clipped by anything above it`,
+    clipped.length === 0,
+    clipped.join(", "),
+  );
+}
+
+async function runTools(browser: Browser): Promise<void> {
+  console.log("\nbrowser: the tools");
+
+  // Phone width throughout. These surfaces have more controls than anything else in
+  // the product, which makes them the likeliest place to break the 44px rule.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    acceptDownloads: true,
+  });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+
+  const pagesIn = async (bytes: Buffer, password?: string): Promise<number> => {
+    const doc = await PDFDocument.load(
+      new Uint8Array(bytes),
+      password === undefined ? {} : ({ password } as never),
+    );
+    return doc.getPageCount();
+  };
+
+  try {
+    // --- merge -------------------------------------------------------------
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf", "many-pages.pdf"]);
+    await page.getByRole("tab", { name: "Sending by email" }).waitFor();
+    check(
+      "the size picker is still the first thing offered",
+      await page.getByRole("tab", { name: "Uploading to a portal" }).isVisible(),
+    );
+    // The offers wait on the files being read, so wait for them rather than racing
+    // the analysis. The picker above does not wait on anything, which is the point.
+    await page.getByText("Or do something else").waitFor({ timeout: 30_000 });
+    check(
+      "and merging is offered underneath, because two PDFs were dropped",
+      (await page.getByRole("button", { name: /Merge into one PDF/ }).count()) > 0,
+    );
+
+    await page.getByRole("button", { name: /Merge into one PDF/ }).click();
+    await page.getByRole("heading", { name: "Merge into one PDF" }).waitFor();
+
+    const small = await page.evaluate(() => {
+      const out: string[] = [];
+      for (const el of document.querySelectorAll("button, input, select, a")) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        if (r.height < 44) out.push(`${el.tagName}:${Math.round(r.height)}px`);
+      }
+      return out;
+    });
+    check("every control on a tool surface clears 44px", small.length === 0, small.join(", "));
+
+    await assertNothingClipped(page, "merge");
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check("and nothing overflows sideways at 390px", overflow <= 0, `${overflow}px over`);
+
+    const merging = page.waitForEvent("download", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Merge them" }).click();
+    await page.getByRole("button", { name: /^Save it$/ }).click();
+    const merged = readFileSync(await (await merging).path());
+    const mergedPages = await pagesIn(merged);
+    console.log(`  merged 6 + 120 pages -> ${mergedPages} pages, ${merged.length} bytes`);
+    check("the merge really contains both documents", mergedPages === 126, `${mergedPages} pages`);
+    await assertClean(page, "merge");
+
+    // --- organise ----------------------------------------------------------
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf"]);
+    await page.getByRole("button", { name: /Reorder, rotate or delete pages/ }).click();
+    await page.getByRole("heading", { name: /Reorder, rotate/ }).waitFor();
+
+    // Real renders from pdf.js, inside the tools worker. If the nested worker or the
+    // canvas factory is broken this is where it shows, and it shows as blank boxes
+    // rather than as an error.
+    await page.locator('img[alt="Page 1"]').waitFor({ timeout: 120_000 });
+    await page.waitForTimeout(2_500);
+    const thumbs = await page.locator('img[alt^="Page "]').count();
+    console.log(`  ${thumbs} page thumbnails rendered`);
+    check("pages are shown as pictures of themselves", thumbs === 6, `${thumbs} thumbnails`);
+
+    const drawn = await page.evaluate(() => {
+      const img = document.querySelector<HTMLImageElement>('img[alt="Page 1"]');
+      return img ? img.naturalWidth : 0;
+    });
+    check("and the thumbnails carry real pixels", drawn > 0, `${drawn}px wide`);
+
+    // The check that a height rule cannot make. A control can be a comfortable 44px
+    // and still be scissored off by an ancestor's overflow, which is exactly what a
+    // two-column page grid did to the delete button at 390px: clickable by a test,
+    // unreachable by a thumb.
+    await assertNothingClipped(page, "the page grid");
+
+    await page.getByRole("button", { name: "Remove page 2" }).click();
+    const rebuilt = page.waitForEvent("download", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Save the new order" }).click();
+    await page.getByRole("button", { name: /^Save it$/ }).click();
+    const organised = readFileSync(await (await rebuilt).path());
+    check(
+      "deleting a page really removes it",
+      (await pagesIn(organised)) === 5,
+      `${await pagesIn(organised)} pages, expected 5`,
+    );
+    await assertClean(page, "organise");
+
+    // --- extract -----------------------------------------------------------
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf"]);
+    await page.getByRole("button", { name: /Take out some pages/ }).click();
+    await page.getByLabel("Which pages to keep", { exact: true }).fill("2-4");
+    check(
+      "the range is counted back before anything is done",
+      (await page.getByText("3 pages: 2, 3, 4").count()) > 0,
+      (await page.getByText(/pages:/).first().textContent()) ?? "",
+    );
+
+    const taking = page.waitForEvent("download", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Take those pages" }).click();
+    await page.getByRole("button", { name: /^Save it$/ }).click();
+    const extracted = readFileSync(await (await taking).path());
+    check(
+      "and exactly those pages come out",
+      (await pagesIn(extracted)) === 3,
+      `${await pagesIn(extracted)} pages`,
+    );
+
+    // --- protect, then unlock what came out --------------------------------
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf"]);
+    await page.getByRole("button", { name: /Add a password/ }).click();
+    check(
+      "the warning comes before the button, not after",
+      (await page.getByText("nothing here remembers anything").count()) > 0,
+    );
+    await page.getByLabel("Choose a password", { exact: true }).fill("hunter2");
+
+    const locking = page.waitForEvent("download", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Lock it" }).click();
+    await page.getByRole("button", { name: /^Save it$/ }).click();
+    const lockedDownload = await locking;
+    const lockedPath = await lockedDownload.path();
+
+    let openedWithout = false;
+    try {
+      await pagesIn(readFileSync(lockedPath));
+      openedWithout = true;
+    } catch {
+      // expected
+    }
+    check("the locked file will not open without the password", !openedWithout);
+    check(
+      "and does open with it",
+      (await pagesIn(readFileSync(lockedPath), "hunter2")) === 6,
+    );
+    console.log(`  locked ${readFileSync(lockedPath).length} bytes`);
+
+    // Feed it back in. This is also the only way to reach the locked notice.
+    await page.goto(ORIGIN);
+    await page.setInputFiles('input[type="file"]', [lockedPath]);
+    await page.getByText("needs a password").waitFor({ timeout: 30_000 });
+    check(
+      "a locked file is called out above everything else",
+      (await page.getByText("including compressing").count()) > 0,
+    );
+
+    await page.getByRole("button", { name: "Unlock", exact: true }).click();
+    await page.getByLabel("The password", { exact: true }).fill("wrong-one");
+    await page.getByRole("button", { name: "Unlock it" }).click();
+    await page.getByText("That password did not open").waitFor({ timeout: 30_000 });
+    check("a wrong password says so rather than failing silently", true);
+
+    await page.getByLabel("The password", { exact: true }).fill("hunter2");
+    const unlocking = page.waitForEvent("download", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Unlock it" }).click();
+    await page.getByRole("button", { name: /^Save it$/ }).click();
+    const unlocked = readFileSync(await (await unlocking).path());
+    check(
+      "the right one gives back a document that opens freely",
+      (await pagesIn(unlocked)) === 6,
+    );
+
+    // --- what is not offered ----------------------------------------------
+    await page.goto(ORIGIN);
+    await upload(page, ["photo-small.jpg"]);
+    await page.getByText("Or do something else").waitFor({ timeout: 30_000 });
+    const offered = await page
+      .getByRole("button", { name: /Merge|Reorder|Take out|password|Make it a PDF|images/ })
+      .allTextContents();
+    console.log(`  one photo offers: ${offered.map((t) => t.split("\n")[0].trim()).join(" | ")}`);
+    check(
+      "a lone photo is offered a PDF and nothing that cannot apply to it",
+      offered.some((t) => /Make it a PDF/.test(t)) &&
+        !offered.some((t) => /Merge|Reorder|password/.test(t)),
+      offered.join(" | "),
+    );
+  } finally {
+    await context.close();
+  }
+}
+
 async function main(): Promise<void> {
   assembleStandalone();
 
@@ -1151,6 +1408,7 @@ async function main(): Promise<void> {
     await runLanding(browser);
     await runZip(browser);
     await runSplit(browser);
+    await runTools(browser);
     await runPile(browser);
   } finally {
     await browser?.close();

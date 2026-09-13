@@ -13,7 +13,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { formatBytes, rawAttachmentBudget, KB, MB } from "../lib/bytes";
 import { shrinkPdf } from "../modules/shrink";
 import { nodeCodec } from "../modules/shrink/codec-node";
@@ -150,6 +150,87 @@ async function main(): Promise<void> {
       `rung was ${result.rung}`,
     );
     console.log(`  passthrough leaves ${formatBytes(result.size)} untouched`);
+  }
+
+  /*
+   * What rung 3 is allowed to cost.
+   *
+   * The rasterizer is stubbed here rather than real — the point is not what it
+   * renders, it is how many times the ladder asks. A probe at this rung costs one
+   * render per page, and the ladder used to spend a flat four probes on every
+   * document, so a 120-page statement cost four hundred and eighty renders to arrive
+   * at a refusal. That is minutes on a phone, and it is why this test counts calls
+   * rather than bytes.
+   */
+  {
+    const counted = (pages: number) => {
+      const seen = { probes: 0, renders: 0, reports: [] as number[] };
+      const rasterizer = async (
+        _source: Uint8Array,
+        _dpi: number,
+        _quality: number,
+        _signal?: AbortSignal,
+        onPage?: (page: number, of: number) => void,
+      ) => {
+        seen.probes += 1;
+        // Stand in for a real render loop: one render per page, every page
+        // announced, exactly as the browser rasterizer does it.
+        for (let n = 1; n <= pages; n++) {
+          seen.renders += 1;
+          onPage?.(n, pages);
+          seen.reports.push(n);
+        }
+        // Sized off the DPI the ladder asked for, which is the one input that falls
+        // monotonically with effort. Tying it to `quality` does not work: quality
+        // holds at its ceiling for the first half of the curve and only then
+        // drops, so the harshest probe can come back larger than the gentlest.
+        return new Uint8Array(Math.round(pages * _dpi * 22));
+      };
+      return { seen, rasterizer };
+    };
+
+    const long = new Uint8Array(readFileSync(join(FIXTURES, "many-pages.pdf")));
+    const longRun = counted(120);
+    await shrinkPdf(long, 40 * KB, {
+      codec: nodeCodec,
+      rasterizer: longRun.rasterizer,
+    });
+    check(
+      "a 120-page document gets one rasterize pass, not four",
+      longRun.seen.probes === 1,
+      `${longRun.seen.probes} probes, ${longRun.seen.renders} page renders`,
+    );
+    console.log(
+      `  many-pages.pdf: ${longRun.seen.probes} probe(s), ${longRun.seen.renders} page renders`,
+    );
+
+    const short = new Uint8Array(readFileSync(join(FIXTURES, "text.pdf")));
+    const shortRun = counted(6);
+    await shrinkPdf(short, 7 * KB, {
+      codec: nodeCodec,
+      rasterizer: shortRun.rasterizer,
+    });
+    check(
+      "a short document still gets a real search, not one blunt pass",
+      shortRun.seen.probes >= 2 && shortRun.seen.probes <= 4,
+      `${shortRun.seen.probes} probes`,
+    );
+    console.log(
+      `  text.pdf: ${shortRun.seen.probes} probe(s), ${shortRun.seen.renders} page renders`,
+    );
+
+    check(
+      "neither spends more page renders than the budget allows",
+      longRun.seen.renders <= 220 && shortRun.seen.renders <= 220,
+      `${longRun.seen.renders} and ${shortRun.seen.renders}`,
+    );
+    check(
+      "and every page is announced before it is rendered",
+      longRun.seen.reports.length === longRun.seen.renders &&
+        longRun.seen.reports[0] === 1 &&
+        longRun.seen.reports.at(-1) === 120,
+      `${longRun.seen.reports.length} reports`,
+    );
   }
 
   // A damaged file gets a sentence, not a stack trace.

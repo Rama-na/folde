@@ -1,8 +1,8 @@
-# Snug
+# ReadyPDF
 
 **Your files, under the limit.**
 
-You name a size limit. Snug guarantees the files land under it.
+You name a size limit. ReadyPDF guarantees the files land under it.
 
 Two shapes of the same job:
 
@@ -28,7 +28,7 @@ weighs 6.4 MB. `lib/bytes.ts` budgets against what the server actually measures.
 malware-delivery signature: Gmail's outbound filter and most corporate inbound
 filters delay or quarantine them, and a missing part is discovered only when
 reassembly fails. Plenty of government and enterprise systems reject `.zip` outright.
-So Snug never produces split volumes, and attaches files loosely by default. Every
+So ReadyPDF never produces split volumes, and attaches files loosely by default. Every
 batch is complete and openable on its own.
 
 ## What it takes
@@ -102,7 +102,7 @@ npm run dev
 
 ## Deploying it
 
-Snug has no server: no API routes, nothing reads the environment at runtime, and
+ReadyPDF has no server: no API routes, nothing reads the environment at runtime, and
 all the work happens in the browser. `npm run build:static` produces a 3.5 MB
 folder of plain files that belongs on a CDN rather than in a container.
 
@@ -131,9 +131,18 @@ already shipped bugs that a green Node run happily reported as fine.
 
 ## Licensing note
 
-This project uses permissively licensed libraries only: `pdf-lib` (MIT),
+This project uses permissively licensed libraries only: `@cantoo/pdf-lib` (MIT),
 `pdfjs-dist` (Apache-2.0), `fflate` (MIT), `sharp` (Apache-2.0), `motion` (MIT),
 `@phosphor-icons/react` (MIT) and `lenis` (MIT).
+
+**`pdf-lib` itself has not shipped since May 2022.** Everything here depended on it,
+which is a four-year-dormant library holding up the part of the product that opens
+people's documents. `@cantoo/pdf-lib` is the actively maintained fork, same API, same
+MIT licence, and it brings three things this codebase actually wants: AES-256
+encryption and decryption (so a PDF can be locked or unlocked), recovery of PDFs with
+a truncated trailer instead of failing hard, and `extractContents()` for pulling
+text, images and approximate vector graphics out of a page. The swap was one line per
+import and the whole suite passed unchanged.
 
 **GSAP is not here, and was asked for.** Since 3.13 it costs nothing, but it ships
 under a bespoke "Standard no charge" licence rather than a permissive one, which puts
@@ -145,8 +154,34 @@ tempting. Shipping either as browser WASM is distribution, and running either
 server-side as a service triggers AGPL source obligations. Do not add either, in any
 form, without a decision to buy a commercial licence from Artifex.
 
+## The tools
+
+Merge, reorder / rotate / delete pages, extract a range, photos into a PDF, pages out
+as photos, and a password on or off. All in `modules/tools`, all on the device, all
+through `@cantoo/pdf-lib`, and all returning either measured bytes or a sentence.
+
+What keeps this from being another wall of twenty-four tiles is `offer.ts`. Every
+other site in the category asks you to pick a tool and *then* upload, which is why
+their front pages look the way they do: with no files in hand, the only honest thing
+to show is everything. Here the files come first and the list is filtered by what they
+actually are. Two PDFs and a photo offer five things; a lone photo offers one.
+
+The size picker is always above that list. If a change puts a tool above it, or turns
+the list into a grid, the wedge is gone.
+
+Tools run in their own worker (`workers/tools.worker.ts`), separate from the
+compression worker, so a merge does not queue behind a forty-file shrink.
+
 ## Not built yet
 
-Sending batches directly via Resend, with delivery receipts. Share links via R2.
-Both mean documents reaching a server, so both arrive together with the interface
+**PDF to Word.** Researched, not refused. There is no good open-source browser library
+for it — every credible client-side option is proprietary, and the open-source tools
+that do it properly (LibreOffice, pdf2docx) are server-side. LibreOffice compiled to
+WASM is 78 MB unpacked, which is self-parody in a product about saving 200 KB. So it
+splits in two: a free on-device version built from `pdfjs` text extraction plus `docx`
+(MIT), honest about being a text draft rather than a copy of the layout, and a
+server-side version with real fidelity for whenever the paid tier exists.
+
+**Sending batches directly via Resend**, with delivery receipts, and **share links via
+R2**. Both mean documents reaching a server, so both arrive together with the interface
 that says so — see `.env.example`.

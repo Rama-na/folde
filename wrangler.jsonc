@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
 
-  // Snug has no server. There is no `main` here on purpose: with only `assets`,
+  // ReadyPDF has no server. There is no `main` here on purpose: with only `assets`,
   // Wrangler deploys the exported directory as static files and runs no code.
   //
   // This file also exists to STOP Wrangler configuring the project for us. With no

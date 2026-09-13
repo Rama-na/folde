@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 /*
- * Two build targets, because Snug does not actually need a server.
+ * Two build targets, because ReadyPDF does not actually need a server.
  *
  * There are no API routes, nothing reads the environment at runtime, and every byte
  * of work happens in the browser. So the default is a fully static export that can

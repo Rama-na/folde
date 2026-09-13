@@ -1,4 +1,4 @@
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { shrinkPdf, type ShrinkOptions } from "@/modules/shrink";
 import { formatBytes } from "@/lib/bytes";
 import { throwIfAborted } from "@/modules/shrink/types";

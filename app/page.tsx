@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { ArrowRight, CircleNotch } from "@phosphor-icons/react";
 import { BRAND } from "@/lib/brand";
@@ -10,6 +10,9 @@ import { useShrinkJob } from "@/lib/use-shrink-job";
 import { useMotionBudget } from "@/lib/use-motion-budget";
 import { Dropzone } from "@/components/Dropzone";
 import { Landing } from "@/components/landing/Landing";
+import { LockedNotice, ToolOffers } from "@/components/tools/ToolOffers";
+import { ToolPanel } from "@/components/tools/ToolPanel";
+import { analyse, type AnalysedFile, type ToolId } from "@/modules/tools";
 import { FileList, type ListedFile } from "@/components/FileList";
 import { Results } from "@/components/Results";
 import { TargetPicker } from "@/components/TargetPicker";
@@ -23,6 +26,8 @@ interface Held extends ListedFile {
 export default function Home() {
   const [files, setFiles] = useState<Held[]>([]);
   const [preset, setPreset] = useState<Preset | null>(null);
+  const [tool, setTool] = useState<Exclude<ToolId, "fit"> | null>(null);
+  const [analysed, setAnalysed] = useState<AnalysedFile[]>([]);
   const job = useShrinkJob();
   const budget = useMotionBudget();
 
@@ -39,6 +44,48 @@ export default function Home() {
       })),
     ]);
   }, []);
+
+  /*
+   * What each file actually is, read from its bytes as soon as it lands.
+   *
+   * This is what lets the page offer only the tools that apply — six PDFs can be
+   * merged, one page cannot be split — and it is deliberately cheap: a type sniff
+   * and, for a PDF, its page count. Nothing is rendered and nothing is decoded, so
+   * forty files arriving at once does not make the interface think.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const read = await Promise.all(
+        files.map(async (f) => ({
+          id: f.id,
+          name: f.name,
+          bytes: new Uint8Array(await f.file.arrayBuffer()),
+        })),
+      );
+      if (cancelled) return;
+      const facts = await Promise.all(read.map(analyse));
+      if (!cancelled) setAnalysed(facts);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [files]);
+
+  const chooseTool = useCallback((id: ToolId) => {
+    if (id === "fit") return;
+    setTool(id);
+  }, []);
+
+  /** The bytes for one file, fetched when a tool actually needs them. */
+  const readFile = useCallback(
+    async (id: string): Promise<ArrayBuffer> => {
+      const held = files.find((f) => f.id === id);
+      if (!held) throw new Error("That file is no longer here.");
+      return held.file.arrayBuffer();
+    },
+    [files],
+  );
 
   /**
    * What we are about to do, worked out before doing any of it, so the user is
@@ -93,6 +140,8 @@ export default function Home() {
     job.reset();
     setFiles([]);
     setPreset(null);
+    setTool(null);
+    setAnalysed([]);
   }, [job]);
 
   const finished = !job.running && job.outcomes.length > 0;
@@ -134,7 +183,16 @@ export default function Home() {
             className="mt-8 grid scroll-mt-8 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-8"
           >
             <div className="space-y-6">
-              {idle && (
+              {tool !== null && (
+                <ToolPanel
+                  tool={tool}
+                  files={analysed}
+                  read={readFile}
+                  onBack={() => setTool(null)}
+                />
+              )}
+
+              {tool === null && idle && (
                 <div className="max-w-xl">
                   <h1 className="text-3xl font-semibold leading-[1.15] tracking-tight sm:text-[2.6rem]">
                     Name the limit. Get files that land under it.
@@ -147,10 +205,15 @@ export default function Home() {
                 </div>
               )}
 
-              <Dropzone onFiles={addFiles} disabled={job.running} />
+              {tool === null && (
+                <Dropzone onFiles={addFiles} disabled={job.running} />
+              )}
 
-              {files.length > 0 && (
-                <TargetPicker selected={preset} onSelect={setPreset} />
+              {tool === null && files.length > 0 && (
+                <>
+                  <LockedNotice files={analysed} onChoose={chooseTool} />
+                  <TargetPicker selected={preset} onSelect={setPreset} />
+                </>
               )}
 
               {strategy && !job.running && (
@@ -185,6 +248,16 @@ export default function Home() {
                 <p className="rounded-[12px] border border-wont/40 bg-wont/5 p-4 text-sm">
                   {job.error}
                 </p>
+              )}
+
+              {/*
+                Below the size picker, never above it. Fitting a limit is the job
+                people arrived for; this is the answer to "while I am here", and the
+                list is short because everything that does not apply to these
+                particular files has already been thrown away.
+              */}
+              {tool === null && !job.running && analysed.length > 0 && (
+                <ToolOffers files={analysed} onChoose={chooseTool} />
               )}
             </div>
 

@@ -4,7 +4,7 @@ import {
   PDFName,
   PDFRawStream,
   PDFRef,
-} from "pdf-lib";
+} from "@cantoo/pdf-lib";
 import { effectiveDpi, scaleForDpi, type EffortPoint } from "./effort";
 import { type ImageCodec, throwIfAborted } from "./types";
 

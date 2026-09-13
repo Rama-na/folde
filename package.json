@@ -1,5 +1,5 @@
 {
-  "name": "snug",
+  "name": "readypdf",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,7 +10,7 @@
     "fixtures": "tsx scripts/make-fixtures.ts",
     "test:shrink": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-shrink.ts",
     "test:bytes": "tsx scripts/test-bytes.ts",
-    "test": "npm run test:bytes && npm run test:pack && npm run test:image && npm run test:shrink && npm run test:split",
+    "test": "npm run test:bytes && npm run test:pack && npm run test:image && npm run test:shrink && npm run test:split && npm run test:tools",
     "test:pack": "tsx scripts/test-pack.ts",
     "test:browser": "tsx scripts/test-browser.ts",
     "test:all": "npm run test && npm run build:server && npm run test:browser && npm run build:static && npm run test:static",
@@ -20,9 +20,11 @@
     "build:static": "next build",
     "build:server": "BUILD_TARGET=server next build",
     "test:static": "tsx scripts/test-static.ts",
-    "test:split": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-split.ts"
+    "test:split": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-split.ts",
+    "test:tools": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-tools.ts"
   },
   "dependencies": {
+    "@cantoo/pdf-lib": "^2.11.0",
     "@phosphor-icons/react": "^2.1.10",
     "fflate": "^0.8.3",
     "lenis": "^1.3.26",

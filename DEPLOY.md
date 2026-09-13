@@ -1,4 +1,4 @@
-# Deploying Snug
+# Deploying ReadyPDF
 
 ## It does not need a server
 
@@ -71,9 +71,11 @@ Every push to `main` redeploys.
 
 ### The name in the config
 
-`wrangler.jsonc` says `"name": "readypdf"`, matching the Worker you created. That
-is the deployment's name and is unrelated to the product name in `lib/brand.ts`.
-If you rename the Worker, rename it here too or you will deploy a second one.
+`wrangler.jsonc` says `"name": "readypdf"`, matching the Worker you created. It now
+also matches the product name, which is a coincidence rather than a link: this one
+is the deployment's identity and `lib/brand.ts` is the product's. Renaming one does
+not rename the other, and renaming the Worker without changing it here deploys a
+second Worker rather than updating the first.
 
 ### If you would rather use Pages
 
@@ -113,11 +115,14 @@ The container layer itself is unproven — build it once locally before trusting
 
 ## Before you point a domain at it
 
-- **Clear the name.** "Snug" has had a web search and nothing significant turned
-  up, which is not clearance. Check the trademark register and the app stores in
-  your jurisdiction before paying for a domain or printing anything. The name
-  lives in `lib/brand.ts` and `package.json` only, so a rename is cheap while it
-  is still cheap.
+- **Clear the name, and know what kind of name it is.** "ReadyPDF" is *descriptive*,
+  which is the category that is hardest to register as a trademark and easiest to
+  collide with — a search turning up nothing significant is not clearance. Check the
+  register and the app stores in your jurisdiction before paying for a domain. It
+  also says PDF, while the product has handled JPEG and PNG from the start and a
+  passport photograph is half of what the portal case exists for. Neither is a reason
+  not to use it. The name lives in `lib/brand.ts` and `package.json` only, so a
+  rename stays cheap right up until it is printed on something.
 - **The repo is still called `folde`.** That is fine and costs nothing; the
   deployed name comes from `lib/brand.ts`.
 - **Nothing collects anything.** No analytics, no accounts, no error reporting. If

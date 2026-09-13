@@ -8,6 +8,7 @@ import { formatBytes } from "@/lib/bytes";
 import {
   type Attempt,
   type ImageCodec,
+  type PageProgress,
   type ShrinkResult,
   throwIfAborted,
 } from "./types";
@@ -29,6 +30,7 @@ export type Rasterizer = (
   dpi: number,
   quality: number,
   signal?: AbortSignal,
+  onPage?: PageProgress,
 ) => Promise<Uint8Array>;
 
 export interface ShrinkOptions {
@@ -36,6 +38,29 @@ export interface ShrinkOptions {
   /** Omit to stop the ladder at rung 2 and refuse rather than lose text. */
   rasterizer?: Rasterizer;
   maxProbes?: number;
+  /** Reported from inside rung 3 only, which is the only rung slow enough to need it. */
+  onPage?: PageProgress;
+}
+
+/**
+ * How many page renders rung 3 is allowed to spend looking for a target.
+ *
+ * The cost of a probe here is pages × one render each, and the ladder used to spend
+ * a flat four probes regardless — so a three-page scan cost twelve renders and a
+ * 120-page statement cost four hundred and eighty. On a mid-range phone that is
+ * minutes of a frozen-looking progress line, and the document that needs it most is
+ * exactly the document least likely to be reachable at all, so most of that time was
+ * being spent to arrive at a refusal.
+ *
+ * Budgeting renders rather than probes spends the same effort on every document:
+ * short ones still get the full search and the precision that comes with it, long
+ * ones get one careful pass instead of four wasted ones.
+ */
+const MAX_PAGE_RENDERS = 220;
+
+function rasterProbeBudget(pages: number): number {
+  if (pages <= 0) return 4;
+  return Math.max(1, Math.min(4, Math.floor(MAX_PAGE_RENDERS / pages)));
 }
 
 /**
@@ -155,6 +180,7 @@ export async function shrinkPdf(
         point.dpi,
         point.quality,
         sig,
+        options.onPage,
       );
       return {
         bytes,
@@ -167,10 +193,11 @@ export async function shrinkPdf(
     const rasterized = await searchForTarget(
       rasterProbe,
       target,
-      // Fewer probes than rung 2 allows. Every probe here re-renders every page,
-      // which is orders of magnitude dearer than re-encoding an image, so the
-      // last few percent of precision is not worth the wait on a phone.
-      { maxProbes: options.maxProbes ?? 4 },
+      // Fewer probes than rung 2 allows, and fewer still the longer the document.
+      // Every probe here re-renders every page, which is orders of magnitude dearer
+      // than re-encoding an image, so the last few percent of precision is not worth
+      // the wait on a phone — and on a long document it is not worth the minutes.
+      { maxProbes: options.maxProbes ?? rasterProbeBudget(inspected.pages) },
       signal,
     );
     if (rasterized.best) {
@@ -334,6 +361,6 @@ export async function shrinkFile(
     textPreserved: true,
     kind,
     shortfall:
-      "This is not a PDF or a photo. Snug works on PDFs, JPEGs and PNGs.",
+      "This is not a PDF or a photo. Only PDFs, JPEGs and PNGs can be resized.",
   };
 }
