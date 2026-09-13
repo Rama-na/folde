@@ -1,6 +1,9 @@
 import { PDFDocument } from "@cantoo/pdf-lib";
-import { throwIfAborted } from "./types";
-import type { PageProgress } from "./index";
+import {
+  throwIfAborted,
+  type PageProgress,
+  type RenderPages,
+} from "./types";
 
 /**
  * Rung 3 — render every page to an image and rebuild the document around them.
@@ -18,13 +21,12 @@ import type { PageProgress } from "./index";
  * injected capability, so under the test runner it is simply absent and the ladder
  * refuses honestly instead.
  */
-export async function rasterizePdf(
-  source: Uint8Array,
-  dpi: number,
-  quality: number,
-  signal?: AbortSignal,
-  onPage?: PageProgress,
-): Promise<Uint8Array> {
+export const renderPdfPages: RenderPages = async (
+  source,
+  { dpi, quality, onStart },
+  onPage,
+  signal,
+) => {
   const pdfjs = await loadPdfJs();
   const worker = getPdfWorker(pdfjs);
 
@@ -37,15 +39,11 @@ export async function rasterizePdf(
   });
   const doc = await task.promise;
   try {
-    const out = await PDFDocument.create();
     const scale = dpi / 72;
 
     for (let n = 1; n <= doc.numPages; n++) {
       throwIfAborted(signal);
-      // Said before the page is rendered rather than after, so the number on screen
-      // is the page being worked on rather than the last one finished. On a long
-      // document this is the difference between a wait and a hang.
-      onPage?.(n, doc.numPages);
+      onStart?.(n, doc.numPages);
 
       const page = await doc.getPage(n);
       // The page keeps its original dimensions in points; only the pixel density
@@ -76,20 +74,53 @@ export async function rasterizePdf(
       page.cleanup();
 
       const blob = await canvas.convertToBlob({ type: "image/jpeg", quality });
-      const image = await out.embedJpg(new Uint8Array(await blob.arrayBuffer()));
-
-      const rebuilt = out.addPage([pagePt.width, pagePt.height]);
-      rebuilt.drawImage(image, {
-        x: 0,
-        y: 0,
-        width: pagePt.width,
-        height: pagePt.height,
+      await onPage({
+        page: n,
+        of: doc.numPages,
+        bytes: new Uint8Array(await blob.arrayBuffer()),
+        widthPt: pagePt.width,
+        heightPt: pagePt.height,
       });
     }
-    return out.save({ useObjectStreams: true });
   } finally {
     await task.destroy();
   }
+};
+
+/**
+ * Rung 3 itself: draw every page, then rebuild a document around the drawings.
+ *
+ * The drawing half is `renderPdfPages` above, which "PDF to images" also uses. They
+ * were one function until there were two callers, and the parts that were hard to
+ * get right — the legacy build, the self-constructed worker, the OffscreenCanvas
+ * factory — are all in the half that is now shared, which is where they should be.
+ */
+export async function rasterizePdf(
+  source: Uint8Array,
+  dpi: number,
+  quality: number,
+  signal?: AbortSignal,
+  onPage?: PageProgress,
+): Promise<Uint8Array> {
+  const out = await PDFDocument.create();
+
+  await renderPdfPages(
+    source,
+    { dpi, quality, onStart: onPage },
+    async (rendered) => {
+      const image = await out.embedJpg(rendered.bytes);
+      const page = out.addPage([rendered.widthPt, rendered.heightPt]);
+      page.drawImage(image, {
+        x: 0,
+        y: 0,
+        width: rendered.widthPt,
+        height: rendered.heightPt,
+      });
+    },
+    signal,
+  );
+
+  return out.save({ useObjectStreams: true });
 }
 
 type PdfJs = typeof import("pdfjs-dist");

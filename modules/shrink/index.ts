@@ -8,6 +8,7 @@ import { formatBytes } from "@/lib/bytes";
 import {
   type Attempt,
   type ImageCodec,
+  type PageProgress,
   type ShrinkResult,
   throwIfAborted,
 } from "./types";
@@ -31,9 +32,6 @@ export type Rasterizer = (
   signal?: AbortSignal,
   onPage?: PageProgress,
 ) => Promise<Uint8Array>;
-
-/** Called as each page is rendered, so a long pass can say where it has got to. */
-export type PageProgress = (page: number, of: number) => void;
 
 export interface ShrinkOptions {
   codec: ImageCodec;
