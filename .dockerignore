@@ -1,4 +1,8 @@
 node_modules
 .next
+out
 .git
-tests/output
+# The fixture corpus is 66 MB of generated test documents. It has no business in a
+# build context, let alone in the image.
+tests
+scripts/make-pile.ts

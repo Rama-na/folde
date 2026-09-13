@@ -88,14 +88,24 @@ npm install
 npm run dev
 ```
 
+## Deploying it
+
+Snug has no server: no API routes, nothing reads the environment at runtime, and
+all the work happens in the browser. `npm run build:static` produces a 3.5 MB
+folder of plain files that belongs on a CDN rather than in a container.
+
+See [DEPLOY.md](DEPLOY.md). Short version: Cloudflare Pages, build command
+`npm run build:static`, output directory `out`, no environment variables.
+
 ## Tests
 
 No jest, no vitest — `tsx` scripts, matching the sibling Thinnai repo.
 
 ```sh
 npm run test         # bytes, packing, images, and the PDF ladder under Node
-npm run test:browser # the production build, driven in Chromium
-npm run test:all     # both, with a build in between
+npm run test:browser # the server build, driven in Chromium
+npm run test:static  # the static export, served as plain files
+npm run test:all     # all of it, both build targets
 ```
 
 `test:browser` ends with the case that started the project: 42 mixed files, 40 MB, at
