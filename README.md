@@ -64,6 +64,18 @@ smaller with its text still selectable. Images in filters other than JPEG are sk
 rather than risked — a `/Decode` array or a CMYK JPEG would come back inverted, and a
 larger file beats a negative of someone's Aadhaar card.
 
+### When the ladder runs out
+
+Some documents do not fit in one message however hard you compress them — a long
+scanned statement, a property deed. For email, and only for email, such a PDF is
+divided by page into whole PDFs that each fit, each measured, each opening on its
+own (`modules/split`). The names say which pages they hold.
+
+There is no page-picking interface and there must not be one. Choosing ranges is a
+PDF tool; this is the last rung of a delivery ladder, and it runs on its own or not
+at all. A portal form asking for one document is never handed three — there it
+refuses honestly instead.
+
 ## Layout
 
 ```
@@ -102,7 +114,7 @@ See [DEPLOY.md](DEPLOY.md). Short version: Cloudflare Pages, build command
 No jest, no vitest — `tsx` scripts, matching the sibling Thinnai repo.
 
 ```sh
-npm run test         # bytes, packing, images, and the PDF ladder under Node
+npm run test         # bytes, packing, images, the PDF ladder, and dividing
 npm run test:browser # the server build, driven in Chromium
 npm run test:static  # the static export, served as plain files
 npm run test:all     # all of it, both build targets
@@ -120,7 +132,13 @@ already shipped bugs that a green Node run happily reported as fine.
 ## Licensing note
 
 This project uses permissively licensed libraries only: `pdf-lib` (MIT),
-`pdfjs-dist` (Apache-2.0), `fflate` (MIT), `sharp` (Apache-2.0).
+`pdfjs-dist` (Apache-2.0), `fflate` (MIT), `sharp` (Apache-2.0), `motion` (MIT),
+`@phosphor-icons/react` (MIT) and `lenis` (MIT).
+
+**GSAP is not here, and was asked for.** Since 3.13 it costs nothing, but it ships
+under a bespoke "Standard no charge" licence rather than a permissive one, which puts
+it outside the rule above. `motion` was already a dependency, is MIT, and drives a
+scroll timeline perfectly well.
 
 **Ghostscript and MuPDF are AGPL.** Both compress PDFs very well and both are
 tempting. Shipping either as browser WASM is distribution, and running either

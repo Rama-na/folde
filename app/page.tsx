@@ -14,7 +14,7 @@ import { FileList, type ListedFile } from "@/components/FileList";
 import { Results } from "@/components/Results";
 import { TargetPicker } from "@/components/TargetPicker";
 import { planDelivery } from "@/modules/pack/strategy";
-import type { PackItem } from "@/modules/pack";
+import { largestSendableFile, type PackItem } from "@/modules/pack";
 
 interface Held extends ListedFile {
   file: File;
@@ -80,8 +80,14 @@ export default function Home() {
         bytes: await f.file.arrayBuffer(),
       })),
     );
-    job.run(payload, strategy.targets);
-  }, [files, job, strategy]);
+    job.run(
+      payload,
+      strategy.targets,
+      // Only a mail job may divide a document. A portal form asking for one
+      // document is not helped by being handed three.
+      preset?.mode === "mail" ? largestSendableFile(preset.bytes) : null,
+    );
+  }, [files, job, preset, strategy]);
 
   const startOver = useCallback(() => {
     job.reset();

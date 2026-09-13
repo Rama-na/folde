@@ -8,6 +8,7 @@ import {
   ShareNetwork,
   WarningCircle,
   TextAa,
+  Scissors,
 } from "@phosphor-icons/react";
 import { formatBytes } from "@/lib/bytes";
 import type { Preset } from "@/lib/presets";
@@ -47,8 +48,17 @@ export function Results({
   const rasterized = outcomes.filter((o) => o.ok && !o.textPreserved);
   const succeeded = outcomes.filter((o) => o.ok);
 
+  const divided = outcomes.filter((o) => o.split);
+
   const saved = useMemo(() => {
-    const before = outcomes.reduce((n, o) => n + o.originalSize, 0);
+    // Every piece of a divided document carries the whole document's original size,
+    // because that is what it was made from. Summing them blindly counts a 60 MB
+    // scan once per piece and reports a starting total several times larger than
+    // the files the user actually chose — so the first piece speaks for all of them.
+    const before = outcomes.reduce(
+      (n, o) => (o.split && o.split.part > 1 ? n : n + o.originalSize),
+      0,
+    );
     const after = outcomes.reduce((n, o) => n + o.size, 0);
     return { before, after };
   }, [outcomes]);
@@ -84,6 +94,7 @@ export function Results({
       </section>
 
       {failed.length > 0 && <Refusals outcomes={failed} />}
+      {divided.length > 0 && <SplitNotice outcomes={divided} />}
       {rasterized.length > 0 && <RasterWarning count={rasterized.length} />}
 
       {preset.mode === "mail" ? (
@@ -117,6 +128,52 @@ function Refusals({ outcomes }: { outcomes: readonly FileOutcome[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * A document that had to be divided to travel at all.
+ *
+ * Said out loud, in its own block, because the user chose to send one file and is
+ * about to send nine. That is a change to what they asked for and they find out here
+ * or they find out from the recipient.
+ *
+ * The second sentence is the one that matters and it is the reason this feature is
+ * allowed to exist: these are not volumes of an archive. Each is a whole PDF. There
+ * is nothing for anybody to reassemble, and no filter to trip on the way.
+ */
+function SplitNotice({ outcomes }: { outcomes: readonly FileOutcome[] }) {
+  const sources = new Map<string, { of: number; pages: number }>();
+  for (const outcome of outcomes) {
+    if (!outcome.split) continue;
+    const current = sources.get(outcome.split.source);
+    sources.set(outcome.split.source, {
+      of: outcome.split.of,
+      pages: Math.max(current?.pages ?? 0, outcome.split.toPage),
+    });
+  }
+
+  return (
+    <section className="rounded-[12px] border border-edge bg-surface p-4">
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <Scissors size={17} weight="regular" aria-hidden />
+        {sources.size === 1 ? "A document was" : `${sources.size} documents were`}{" "}
+        divided by page
+      </h3>
+      <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-ink-soft">
+        {[...sources].map(([name, { of, pages }]) => (
+          <li key={name}>
+            <span className="font-medium text-ink">{name}</span> could not be sent
+            in one message even on its own, so its {pages} pages went into{" "}
+            <span className="tabular">{of}</span> separate PDFs.
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+        Each one opens by itself. There is nothing for the recipient to join back
+        together, and nothing that will look like a split archive to a mail filter.
+      </p>
     </section>
   );
 }

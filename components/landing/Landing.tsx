@@ -221,6 +221,10 @@ function TwoJobs() {
             ZIPs. Never multi-part archives — those look like malware delivery to
             a filter, and get quarantined accordingly.
           </p>
+          <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+            A document too large to send even by itself is divided by page into
+            whole PDFs that each open on their own. Nothing to reassemble.
+          </p>
         </div>
       </div>
     </Band>

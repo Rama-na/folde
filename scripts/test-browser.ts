@@ -919,6 +919,105 @@ async function runLanding(browser: Browser): Promise<void> {
   }
 }
 
+/**
+ * A document too large to send even on its own.
+ *
+ * The interface used to say "still too large to send even alone. Try a smaller
+ * limit, or split the document" and then offer no way to split the document, which
+ * is a refusal dressed as advice. `test:split` covers the dividing itself. This
+ * covers the part that test cannot: that the worker reaches for it at the right
+ * moment, that the user is told it happened, and that what lands on disk opens.
+ *
+ * Driven through the custom limit box rather than a preset, because a six-page text
+ * document is the fastest honest way to reach this state — text barely compresses,
+ * so the ladder genuinely runs out, and it runs out in seconds rather than by
+ * rasterizing a hundred pages to find out.
+ */
+async function runSplit(browser: Browser): Promise<void> {
+  console.log("\nbrowser: a document that cannot travel whole is divided by page");
+
+  const context = await browser.newContext({ acceptDownloads: true });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+
+  try {
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf"]);
+    await page.getByRole("tab", { name: "Sending by email" }).click();
+    await page.getByLabel("Or type the limit your form gives").fill("10");
+    await page.getByRole("button", { name: "Make it fit" }).click();
+    await page
+      .getByRole("heading", { name: /email(s)? to send/ })
+      .waitFor({ timeout: 180_000 });
+    await settle(page);
+
+    check(
+      "the user is told the document was divided",
+      (await page.getByText("divided by page").count()) > 0,
+      (await page.getByText("still too large to send").count()) > 0
+        ? "it refused instead of dividing"
+        : "no notice appeared",
+    );
+    check(
+      "and told that each piece opens on its own",
+      (await page.getByText("nothing for the recipient to join").count()) > 0,
+    );
+
+    const names = await page.locator("li", { hasText: /\(pages \d/ }).allTextContents();
+    console.log(`  pieces: ${names.map((n) => n.trim().split("\n")[0]).join(" | ")}`);
+    check(
+      "the pieces are named by page range",
+      names.length >= 2,
+      `${names.length} found`,
+    );
+
+    // The arithmetic that dividing quietly breaks. Every piece carries the whole
+    // document's original size, because that is what it was cut from — summed
+    // blindly, a 8.7 KB file reports as 17 KB before a byte was saved.
+    const summary =
+      (await page.locator("section", { hasText: "→" }).first().textContent()) ?? "";
+    console.log(`  summary: ${summary.replace(/\s+/g, " ").trim()}`);
+    const before = /([\d.]+)\s*KB/.exec(summary);
+    const original = fixtureTotal(["text.pdf"]) / 1000;
+    check(
+      "the starting total counts the original once, not once per piece",
+      before !== null && Math.abs(Number(before[1]) - original) < 1,
+      `page says ${before?.[1]} KB, the file is ${original.toFixed(1)} KB`,
+    );
+
+    await assertClean(page, "the split");
+
+    const pending = page.waitForEvent("download", { timeout: 30_000 });
+    await page.getByRole("button", { name: /^Save / }).first().click();
+    const bytes = readFileSync(await (await pending).path());
+    check(
+      "and a piece downloads as a PDF that opens by itself",
+      bytes.subarray(0, 5).toString() === "%PDF-",
+      `${bytes.length} bytes starting ${JSON.stringify(bytes.subarray(0, 5).toString("latin1"))}`,
+    );
+
+    // The other half of the rule: a portal wants one document, so the same file
+    // against the same impossible number must refuse rather than hand back three.
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf"]);
+    await page.getByRole("tab", { name: "Uploading to a portal" }).click();
+    await page.getByLabel("Or type the limit your form gives").fill("3");
+    await page.getByRole("button", { name: "Make it fit" }).click();
+    await page.locator("p", { hasText: "→" }).first().waitFor({ timeout: 180_000 });
+    await settle(page);
+    check(
+      "a portal upload is never divided — it refuses instead",
+      (await page.getByText("divided by page").count()) === 0 &&
+        (await page.getByText("could not reach the limit").count()) > 0,
+    );
+  } finally {
+    await context.close();
+  }
+}
+
 async function main(): Promise<void> {
   assembleStandalone();
 
@@ -954,6 +1053,7 @@ async function main(): Promise<void> {
     await runThemes(browser);
     await runLanding(browser);
     await runZip(browser);
+    await runSplit(browser);
     await runPile(browser);
   } finally {
     await browser?.close();
