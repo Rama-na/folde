@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { motion } from "motion/react";
+import { ArrowRight, CircleNotch } from "@phosphor-icons/react";
 import { BRAND } from "@/lib/brand";
 import { formatBytes } from "@/lib/bytes";
 import type { Preset } from "@/lib/presets";
 import { useShrinkJob } from "@/lib/use-shrink-job";
+import { useMotionBudget } from "@/lib/use-motion-budget";
 import { Dropzone } from "@/components/Dropzone";
 import { FileList, type ListedFile } from "@/components/FileList";
 import { Results } from "@/components/Results";
@@ -20,11 +23,9 @@ export default function Home() {
   const [files, setFiles] = useState<Held[]>([]);
   const [preset, setPreset] = useState<Preset | null>(null);
   const job = useShrinkJob();
+  const budget = useMotionBudget();
 
-  const total = useMemo(
-    () => files.reduce((n, f) => n + f.size, 0),
-    [files],
-  );
+  const total = useMemo(() => files.reduce((n, f) => n + f.size, 0), [files]);
 
   const addFiles = useCallback((incoming: File[]) => {
     setFiles((current) => [
@@ -39,7 +40,7 @@ export default function Home() {
   }, []);
 
   /**
-   * What we are about to do, worked out before doing any of it — so the user is
+   * What we are about to do, worked out before doing any of it, so the user is
    * told the plan rather than watching a bar and hoping.
    */
   const strategy = useMemo(() => {
@@ -90,89 +91,137 @@ export default function Home() {
   const finished = !job.running && job.outcomes.length > 0;
 
   return (
-    <main className="mx-auto max-w-2xl px-5 py-10 sm:py-16">
-      <header>
-        <h1 className="text-3xl font-semibold tracking-tight">{BRAND.name}</h1>
-        <p className="mt-1 text-ink-soft">{BRAND.tagline}</p>
-      </header>
+    <div className="min-h-dvh">
+      <main className="mx-auto max-w-5xl px-5 py-10 sm:py-14">
+        <header className="flex items-baseline gap-3">
+          <span className="text-xl font-semibold tracking-tight">
+            {BRAND.name}
+          </span>
+          <span className="text-sm text-ink-soft">{BRAND.tagline}</span>
+        </header>
 
-      <div className="mt-8 space-y-6">
-        {!finished && (
-          <>
-            <Dropzone onFiles={addFiles} disabled={job.running} />
-
-            <FileList
-              files={files}
-              total={total}
-              onRemove={
-                job.running
-                  ? undefined
-                  : (id) =>
-                      setFiles((c) => c.filter((f) => f.id !== id))
-              }
-              onClear={job.running ? undefined : () => setFiles([])}
-            />
-
-            {files.length > 0 && (
-              <TargetPicker selected={preset} onSelect={setPreset} />
-            )}
-
-            {strategy && !job.running && (
-              <section className="rounded-[10px] border border-edge bg-surface p-4">
-                <p className="text-sm">{strategy.reason}</p>
-                <button
-                  type="button"
-                  onClick={start}
-                  className="mt-4 min-h-[44px] w-full rounded-[10px] bg-accent px-5 font-medium text-accent-ink transition-opacity duration-150 hover:opacity-90 sm:w-auto"
-                >
-                  Make it fit
-                </button>
-              </section>
-            )}
-          </>
-        )}
-
-        {job.running && job.progress && (
-          <Progress
-            done={job.progress.done}
-            total={job.progress.total}
-            current={job.progress.current}
-            onCancel={job.cancel}
-          />
-        )}
-
-        {job.error && (
-          <p className="rounded-[10px] border border-wont/40 bg-wont/5 p-4 text-sm">
-            {job.error}
-          </p>
-        )}
-
-        {finished && preset && (
-          <>
+        {finished && preset ? (
+          <div className="mx-auto mt-8 max-w-2xl">
             <Results outcomes={job.outcomes} preset={preset} />
             <button
               type="button"
               onClick={startOver}
-              className="text-sm text-ink-soft underline underline-offset-4 hover:text-ink"
+              className="mt-6 inline-flex min-h-[44px] items-center text-sm text-ink-soft transition-colors duration-150 hover:text-accent"
             >
               Start over
             </button>
-          </>
-        )}
-      </div>
+          </div>
+        ) : (
+          /*
+           * Asymmetric on desktop, single column on a phone. The left column is
+           * the thing you came to use; the right carries state once there is any,
+           * and is not rendered at all when empty rather than reserving space.
+           */
+          <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-8">
+            <div className="space-y-6">
+              <Dropzone onFiles={addFiles} disabled={job.running} />
 
-      <footer className="mt-16 border-t border-edge pt-6 text-sm text-ink-soft">
-        Everything here happens on your device. Your documents are never uploaded.
+              {files.length > 0 && (
+                <TargetPicker selected={preset} onSelect={setPreset} />
+              )}
+
+              {strategy && !job.running && (
+                <motion.section
+                  initial={budget === "reduced" ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                  className="rounded-[12px] border border-accent/30 bg-accent-wash p-4"
+                >
+                  <p className="text-sm leading-relaxed">{strategy.reason}</p>
+                  <button
+                    type="button"
+                    onClick={start}
+                    className="mt-4 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[12px] bg-accent px-6 font-medium text-accent-ink transition-transform duration-150 hover:opacity-90 active:scale-[0.98] sm:w-auto"
+                  >
+                    Make it fit
+                    <ArrowRight size={16} weight="bold" aria-hidden />
+                  </button>
+                </motion.section>
+              )}
+
+              {job.running && job.progress && (
+                <Progress
+                  done={job.progress.done}
+                  total={job.progress.total}
+                  current={job.progress.current}
+                  onCancel={job.cancel}
+                />
+              )}
+
+              {job.error && (
+                <p className="rounded-[12px] border border-wont/40 bg-wont/5 p-4 text-sm">
+                  {job.error}
+                </p>
+              )}
+            </div>
+
+            <aside className="lg:sticky lg:top-14 lg:self-start">
+              {files.length > 0 ? (
+                <FileList
+                  files={files}
+                  total={total}
+                  onRemove={
+                    job.running
+                      ? undefined
+                      : (id) => setFiles((c) => c.filter((f) => f.id !== id))
+                  }
+                  onClear={job.running ? undefined : () => setFiles([])}
+                />
+              ) : (
+                <WhyItBounces />
+              )}
+            </aside>
+          </div>
+        )}
+      </main>
+
+      <footer className="mx-auto max-w-5xl px-5 pb-10 text-sm text-ink-soft">
+        <div className="border-t border-edge pt-6">
+          Everything here happens on your device. Your documents are never
+          uploaded.
+        </div>
       </footer>
-    </main>
+    </div>
+  );
+}
+
+/**
+ * The most interesting true thing about the product, stated plainly.
+ *
+ * It sits where the file list will go, so an empty right column says something
+ * useful instead of holding space. It is also the fact that explains why a
+ * carefully-sized attachment still bounces, which is the exact confusion that
+ * brought most people here.
+ */
+function WhyItBounces() {
+  return (
+    <section className="rounded-[12px] border border-edge bg-surface p-5">
+      <h2 className="text-sm font-semibold">
+        A 5 MB limit is not 5 MB of files
+      </h2>
+      <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+        Mail servers measure the encoded message, and encoding inflates every
+        attachment by about 37% before headers are counted. A 5 MB cap is really
+        about 3.5 MB of files.
+      </p>
+      <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+        It is why a carefully-trimmed 4.7 MB email still bounces. On the wire it
+        weighs <span className="tabular font-medium text-ink">6.4 MB</span>.
+      </p>
+    </section>
   );
 }
 
 /**
  * Real progress only.
  *
- * The count is files actually finished, not an animation — a bar that moves on a
- * timer while someone waits on a deadline is a lie they can feel.
+ * The count is files actually finished, not an animation. A bar that moves on a
+ * timer while somebody waits on a deadline is a lie they can feel.
  */
 function Progress({
   done,
@@ -187,9 +236,15 @@ function Progress({
 }) {
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
   return (
-    <section className="rounded-[10px] border border-edge bg-surface p-4">
-      <div className="flex items-baseline justify-between">
-        <p className="text-sm font-medium">
+    <section className="rounded-[12px] border border-edge bg-surface p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="flex items-center gap-2 text-sm font-medium">
+          <CircleNotch
+            size={15}
+            weight="bold"
+            className="animate-spin text-accent"
+            aria-hidden
+          />
           <span className="tabular">
             {done} of {total}
           </span>{" "}
@@ -198,7 +253,7 @@ function Progress({
         <button
           type="button"
           onClick={onCancel}
-          className="text-sm text-ink-soft underline underline-offset-4 hover:text-ink"
+          className="min-h-[44px] text-sm text-ink-soft transition-colors duration-150 hover:text-wont"
         >
           Cancel
         </button>
@@ -212,7 +267,7 @@ function Progress({
         aria-valuemax={100}
       >
         <div
-          className="h-full bg-accent transition-[width] duration-150"
+          className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>

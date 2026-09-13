@@ -13,12 +13,12 @@ import {
 /**
  * Where are these files going?
  *
- * This is the one question the product asks, and the whole answer depends on it —
- * a portal checks the file on disk, a mail server checks the encoded message, and
+ * The one question the product asks, and the whole answer depends on it: a portal
+ * checks the file sitting on disk, a mail server checks the encoded message, and
  * those are different numbers for the same stated limit.
  *
- * The presets carry the note about who enforces each figure, because almost nobody
- * knows their limit as a number. They know it as "the SSC site keeps rejecting it".
+ * Every preset carries the note about who enforces it, because almost nobody knows
+ * their limit as a number. They know it as "the SSC site keeps rejecting it".
  */
 export function TargetPicker({
   selected,
@@ -35,7 +35,7 @@ export function TargetPicker({
       <div
         role="tablist"
         aria-label="Where the files are going"
-        className="flex gap-1 rounded-[10px] border border-edge bg-surface p-1"
+        className="flex gap-1 rounded-[12px] border border-edge bg-surface p-1"
       >
         <Tab
           active={mode === "mail"}
@@ -49,9 +49,9 @@ export function TargetPicker({
         />
       </div>
 
-      <p className="mt-3 text-sm text-ink-soft">
+      <p className="mt-3 text-sm leading-relaxed text-ink-soft">
         {mode === "mail"
-          ? "Mail servers measure the encoded message, not your files — so the real budget is about a quarter smaller than the limit. We account for that."
+          ? "Mail servers measure the encoded message, not your files, so the real budget is about a quarter smaller than the limit. We account for that."
           : "Portals check the file itself. We get under the number and verify it before handing it back."}
       </p>
 
@@ -63,13 +63,13 @@ export function TargetPicker({
             onClick={() => onSelect(preset)}
             aria-pressed={selected?.id === preset.id}
             className={[
-              "min-h-[44px] rounded-[10px] border p-3 text-left transition-colors duration-150",
+              "min-h-[44px] rounded-[12px] border p-3 text-left transition-colors duration-150",
               selected?.id === preset.id
-                ? "border-accent bg-accent/10"
+                ? "border-accent bg-accent-wash"
                 : "border-edge bg-surface hover:border-ink-soft",
             ].join(" ")}
           >
-            <span className="tabular block text-lg font-semibold">
+            <span className="tabular block text-lg font-semibold tracking-tight">
               {formatBytes(preset.bytes)}
             </span>
             <span className="mt-0.5 block text-xs leading-snug text-ink-soft">
@@ -92,8 +92,8 @@ export function TargetPicker({
  * A limit we do not carry a figure for.
  *
  * Portals change their caps without notice and there are more of them than any list
- * can hold. Without this, someone whose form says 350 KB has no route through the
- * product at all — which is a strange way to treat the one number they actually know.
+ * can hold. Without this, somebody whose form says 350 KB has no route through the
+ * product at all, which is a strange way to treat the one number they actually know.
  */
 function CustomLimit({
   mode,
@@ -116,14 +116,11 @@ function CustomLimit({
   return (
     <div
       className={[
-        "mt-2 rounded-[10px] border p-3 transition-colors duration-150",
-        active ? "border-accent bg-accent/10" : "border-edge bg-surface",
+        "mt-2 rounded-[12px] border p-3 transition-colors duration-150",
+        active ? "border-accent bg-accent-wash" : "border-edge bg-surface",
       ].join(" ")}
     >
-      <label
-        htmlFor="custom-limit"
-        className="block text-sm font-medium"
-      >
+      <label htmlFor="custom-limit" className="block text-sm font-medium">
         Or type the limit your form gives
       </label>
       <div className="mt-2 flex gap-2">
@@ -138,7 +135,7 @@ function CustomLimit({
             setAmount(e.target.value);
             apply(e.target.value, unit);
           }}
-          className="tabular min-h-[44px] w-full min-w-0 rounded-[10px] border border-edge bg-canvas px-3 text-base"
+          className="tabular min-h-[44px] w-full min-w-0 rounded-[12px] border border-edge bg-canvas px-3 text-base placeholder:text-ink-soft/60"
         />
         <select
           aria-label="Unit"
@@ -148,7 +145,7 @@ function CustomLimit({
             setUnit(next);
             apply(amount, next);
           }}
-          className="min-h-[44px] shrink-0 rounded-[10px] border border-edge bg-canvas px-3 text-base"
+          className="min-h-[44px] shrink-0 rounded-[12px] border border-edge bg-canvas px-3 text-base"
         >
           <option value="KB">KB</option>
           <option value="MB">MB</option>
@@ -174,8 +171,10 @@ function Tab({
       aria-selected={active}
       onClick={onClick}
       className={[
-        "min-h-[44px] flex-1 rounded-[8px] px-3 text-sm font-medium transition-colors duration-150",
-        active ? "bg-accent text-accent-ink" : "text-ink-soft hover:text-ink",
+        "min-h-[44px] flex-1 rounded-[10px] px-3 text-sm font-medium transition-colors duration-150",
+        active
+          ? "bg-accent text-accent-ink"
+          : "text-ink-soft hover:bg-accent-wash hover:text-ink",
       ].join(" ")}
     >
       {label}

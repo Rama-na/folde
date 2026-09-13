@@ -98,6 +98,7 @@ async function run(page: Page): Promise<void> {
 
   await upload(page, ["scan-300dpi.pdf"]);
   await page.getByText("1 file", { exact: false }).first().waitFor();
+  await assertContrast(page, "intake");
 
   await page.getByRole("tab", { name: "Uploading to a portal" }).click();
   await page.getByRole("button", { name: /200 KB/ }).click();
@@ -109,6 +110,7 @@ async function run(page: Page): Promise<void> {
   const summary = page.locator("p", { hasText: "→" }).first();
   await summary.waitFor({ timeout: 180_000 });
   const elapsed = Date.now() - started;
+  await settle(page);
 
   const text = (await summary.textContent()) ?? "";
   console.log(`  result: ${text.trim()} in ${(elapsed / 1000).toFixed(1)}s`);
@@ -138,6 +140,7 @@ async function run(page: Page): Promise<void> {
   );
   check("compression under a phone-ish budget of time", elapsed < 60_000, `${elapsed}ms`);
   await assertClean(page, "portal target");
+  await assertContrast(page, "results");
 
   // Force rung 3, and force it somewhere it can actually succeed.
   //
@@ -306,6 +309,82 @@ function assembleStandalone(): void {
 }
 
 /**
+ * WCAG contrast, computed from what the browser actually painted.
+ *
+ * A palette change is exactly the kind of edit that quietly drops a colour below
+ * readable without anything failing, so this reads the real computed styles rather
+ * than trusting the token values. The accent carries every primary action and the
+ * two status colours carry the only two outcomes that matter, so all three are
+ * checked against the surface they sit on.
+ */
+/**
+ * Let transitions and the count animation finish before measuring anything.
+ *
+ * Both of the first failures this suite reported after the redesign were this: a
+ * tab measured mid-colour-transition read 1.08:1, and the pile's result number read
+ * "40 MB -> 18.9 MB, 75% smaller", which cannot both be true because the count was
+ * still falling. Longer than the 150ms colour transition and the 900ms count.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.waitForTimeout(1_100);
+}
+
+async function assertContrast(page: Page, where: string): Promise<void> {
+  await settle(page);
+  // Passed as a source string on purpose. The test runner's transpiler wraps named
+  // function expressions in a `__name` helper that does not exist in the page, so a
+  // normal inline arrow body throws ReferenceError the moment it runs in the browser.
+  const results = (await page.evaluate(`(() => {
+    function luminance(color) {
+      var parts = (color.match(/[\\d.]+/g) || ["0", "0", "0"]).map(Number);
+      function channel(c) {
+        var v = c / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      }
+      return 0.2126 * channel(parts[0]) + 0.7152 * channel(parts[1]) + 0.0722 * channel(parts[2]);
+    }
+
+    function ratio(fg, bg) {
+      var a = luminance(fg), b = luminance(bg);
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    }
+
+    // Walk up for a painted background: a transparent button inherits the section
+    // behind it, and that is what the eye actually compares against.
+    function backdrop(el) {
+      var node = el;
+      while (node) {
+        var bg = getComputedStyle(node).backgroundColor;
+        if (bg && bg !== "transparent" && !/rgba?\\([^)]*,\\s*0\\)/.test(bg)) return bg;
+        node = node.parentElement;
+      }
+      return getComputedStyle(document.body).backgroundColor;
+    }
+
+    var out = [];
+    var nodes = document.querySelectorAll("button, a[href]");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) continue;
+      var style = getComputedStyle(el);
+      out.push({
+        label: (el.textContent || "").trim().slice(0, 28) || el.tagName,
+        ratio: ratio(style.color, backdrop(el))
+      });
+    }
+    return out;
+  })()`)) as Array<{ label: string; ratio: number }>;
+
+  const failing = results.filter((r) => r.ratio < 4.5);
+  check(
+    `${where}: every control clears WCAG AA (4.5:1)`,
+    failing.length === 0,
+    failing.map((f) => `"${f.label}" at ${f.ratio.toFixed(2)}:1`).join(", "),
+  );
+}
+
+/**
  * The case that started the project, at the width it will actually be used.
  *
  * Everything in this product is premised on "42 documents, 37.6 MB" and until now
@@ -384,6 +463,7 @@ async function runPile(browser: Browser): Promise<void> {
       .getByRole("heading", { name: /email(s)? to send/ })
       .waitFor({ timeout: 900_000 });
     const elapsed = Date.now() - started;
+    await settle(page);
 
     const summary =
       (await page.locator("section", { hasText: "→" }).first().textContent()) ?? "";
@@ -394,6 +474,23 @@ async function runPile(browser: Browser): Promise<void> {
       summary.includes(`${names.length} files`),
       summary.replace(/\s+/g, " ").trim(),
     );
+
+    // The counted number and the static percentage are computed from the same two
+    // figures, so they must agree. When they disagree the count was read before it
+    // landed, which is exactly how this suite first reported "40 MB -> 18.9 MB,
+    // 75% smaller" as a pass.
+    const counted = /→\s*([\d.]+)\s*MB/.exec(summary);
+    const percent = /(\d+)%\s*smaller/.exec(summary);
+    if (counted && percent) {
+      const implied = Math.round(
+        (1 - Number(counted[1]) / (total / 1_000_000)) * 100,
+      );
+      check(
+        "the counted total agrees with the percentage shown",
+        Math.abs(implied - Number(percent[1])) <= 1,
+        `${counted[1]} MB implies ${implied}%, page says ${percent[1]}%`,
+      );
+    }
     await assertClean(page, "the pile");
     check(
       "no file is reported as failing when the batches all worked",
@@ -422,6 +519,135 @@ async function runPile(browser: Browser): Promise<void> {
       `  throughput: ${(total / 1_000_000 / (elapsed / 1000)).toFixed(1)} MB/s ` +
         `across ${names.length} files`,
     );
+  } finally {
+    await context.close();
+  }
+}
+
+/**
+ * The polish must not be load-bearing.
+ *
+ * Motion is gated on prefers-reduced-motion and Save-Data, which means a real
+ * share of users never sees it. The rule that makes that safe is that no
+ * information exists only inside an animation, and this is what proves it: the
+ * same job, forced static, has to reach the same measured numbers.
+ */
+async function runReducedMotion(browser: Browser): Promise<void> {
+  console.log("\nbrowser: reduced motion reaches the same numbers");
+  const context = await browser.newContext({ reducedMotion: "reduce" });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error - ${err.message}`);
+  });
+
+  try {
+    await page.goto(ORIGIN);
+    await page.setInputFiles(
+      'input[type="file"]',
+      [join(FIXTURES, "scan-300dpi.pdf")],
+    );
+    await page.getByRole("tab", { name: "Uploading to a portal" }).click();
+    await page.getByRole("button", { name: /^200 KB/ }).click();
+    await page.getByRole("button", { name: "Make it fit" }).click();
+
+    const summary = page.locator("p", { hasText: "→" }).first();
+    await summary.waitFor({ timeout: 180_000 });
+    await settle(page);
+
+    const download = page.waitForEvent("download", { timeout: 30_000 });
+    await page.getByRole("button", { name: "Save" }).first().click();
+    const bytes = readFileSync(await (await download).path());
+
+    console.log(`  static run produced ${bytes.length} bytes`);
+    check(
+      "a statically-rendered run still reaches the target",
+      bytes.length <= 200_000,
+      `${bytes.length} bytes`,
+    );
+    // The counting number must have settled on its real value, not been left
+    // mid-animation at whatever it started from.
+    const text = (await summary.textContent()) ?? "";
+    check(
+      "the result number shows the final figure, not the starting one",
+      !text.includes("5.3 MB →  5.3 MB") && text.includes("→"),
+      text.trim(),
+    );
+    await assertClean(page, "reduced motion");
+  } finally {
+    await context.close();
+  }
+}
+
+/** The canvas colour the page actually paints, for theme comparison. */
+async function canvasColour(browser: Browser, scheme: "light" | "dark"): Promise<string> {
+  const context = await browser.newContext({ colorScheme: scheme });
+  const page = await context.newPage();
+  try {
+    await page.goto(ORIGIN);
+    return await page.evaluate(
+      `getComputedStyle(document.body).backgroundColor`,
+    );
+  } finally {
+    await context.close();
+  }
+}
+
+/** First channel of an rgb() string, as a rough brightness proxy. */
+function firstChannel(colour: string): number {
+  const m = /rgba?\(\s*(\d+)/.exec(colour);
+  return m ? Number(m[1]) : -1;
+}
+
+/**
+ * Both themes, and proof that they are actually two themes.
+ *
+ * The version of this check that only asserted "the dark canvas is dark" passed
+ * while light mode did not exist at all: a nested dark `@theme` had been hoisted out
+ * of its media query by Tailwind, so every visitor got the dark palette and the page
+ * was perfectly consistent about it. Comparing the two is what catches that.
+ */
+async function runThemes(browser: Browser): Promise<void> {
+  console.log("\nbrowser: both themes");
+
+  const light = await canvasColour(browser, "light");
+  const dark = await canvasColour(browser, "dark");
+  console.log(`  light canvas: ${light}`);
+  console.log(`  dark canvas:  ${dark}`);
+
+  check("the light canvas is light", firstChannel(light) > 200, light);
+  check("the dark canvas is dark", firstChannel(dark) < 60, dark);
+  check(
+    "the two themes are genuinely different",
+    light !== dark,
+    "both rendered the same canvas, so one of them is not being applied",
+  );
+
+  await runDarkDetail(browser);
+}
+
+async function runDarkDetail(browser: Browser): Promise<void> {
+  const context = await browser.newContext({
+    colorScheme: "dark",
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await context.newPage();
+
+  try {
+    await page.goto(ORIGIN);
+    await page.setInputFiles(
+      'input[type="file"]',
+      [join(FIXTURES, "photo.jpg")],
+    );
+    await page.getByRole("tab", { name: "Uploading to a portal" }).click();
+    await page.getByRole("button", { name: /^100 KB/ }).click();
+
+    await assertContrast(page, "dark");
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check("dark mode has no horizontal scroll at 390px", overflow <= 0, `${overflow}px`);
+
   } finally {
     await context.close();
   }
@@ -458,6 +684,8 @@ async function main(): Promise<void> {
     });
 
     await run(page);
+    await runReducedMotion(browser);
+    await runThemes(browser);
     await runPile(browser);
   } finally {
     await browser?.close();

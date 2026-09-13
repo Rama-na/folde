@@ -1,31 +1,73 @@
 @import "tailwindcss";
 
-@theme {
-  --color-canvas: #fdfcfa;
-  --color-surface: #ffffff;
-  --color-edge: #e8e3dc;
-  --color-ink: #1a1714;
-  --color-ink-soft: #6b635a;
-  --color-accent: #c2650a;
-  --color-accent-ink: #ffffff;
-  --color-fits: #2f7d32;
-  --color-wont: #a8321f;
+/*
+ * Cobalt on bone.
+ *
+ * The previous palette was warm cream, burnt ochre and espresso ink. That trio is
+ * the most-repeated palette in machine-generated design work, and it read exactly
+ * that way. It also put the brand in the same colour family as every competitor:
+ * Adobe, iLovePDF, Smallpdf and PDF24 are all red or orange.
+ *
+ * Cobalt reads as infrastructure rather than a tools site, which is the right note
+ * for somebody uploading a PAN card. More usefully it leaves green alone. Green is
+ * not decoration here - it means a size that has been measured and verified, which
+ * is the only emotional payload the product has, and a green brand would blur it.
+ *
+ * One accent. `fits` and `wont` carry meaning and appear nowhere else.
+ */
 
-  --radius-card: 10px;
-  --radius-drop: 14px;
+@theme {
+  /* Cool bone. Deliberately not cream: warmth here is what made it look generic. */
+  --color-canvas: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-edge: #e2e5ea;
+  --color-ink: #0f1419;
+  --color-ink-soft: #5b6472;
+
+  --color-accent: #2347d9;
+  --color-accent-ink: #ffffff;
+  --color-accent-wash: #eef1fe;
+
+  /* A size that has been measured. */
+  --color-fits: #0f7a3d;
+  /* An honest refusal. */
+  --color-wont: #c02617;
+
+  /*
+   * Radius lock: 12px on everything interactive, 18px on the drop zone alone.
+   * Mixed radii was one of the tells in the previous build.
+   */
+  --radius-card: 12px;
+  --radius-drop: 18px;
 }
 
+/*
+ * Dark mode overrides the variables on :root, NOT inside a second `@theme`.
+ *
+ * This matters and is easy to get wrong. Tailwind v4 hoists `@theme` out of any
+ * `@media` wrapper, so a nested dark `@theme` does not become conditional - it
+ * simply emits later and wins unconditionally. The first version of this file did
+ * exactly that, and the result was that light mode never existed: every visitor got
+ * the dark palette and nothing failed, because the page was internally consistent.
+ *
+ * Overriding `var()` values at `:root` inside a real media query is the arrangement
+ * that actually works, since every Tailwind utility reads the variable at use time.
+ */
 @media (prefers-color-scheme: dark) {
-  @theme {
-    --color-canvas: #141210;
-    --color-surface: #1e1b18;
-    --color-edge: #332e29;
-    --color-ink: #f5f1ec;
-    --color-ink-soft: #a39a90;
-    --color-accent: #e8873a;
-    --color-accent-ink: #1a1714;
-    --color-fits: #6cc070;
-    --color-wont: #e8705a;
+  :root {
+    --color-canvas: #0b0e14;
+    --color-surface: #141922;
+    --color-edge: #252c39;
+    --color-ink: #eef1f6;
+    --color-ink-soft: #94a0b3;
+
+    /* Lifted so text-on-accent and accent-on-canvas both still clear AA. */
+    --color-accent: #6f8dff;
+    --color-accent-ink: #0b0e14;
+    --color-accent-wash: #18203a;
+
+    --color-fits: #4ade80;
+    --color-wont: #ff7a6b;
   }
 }
 
@@ -36,12 +78,40 @@ html {
 body {
   background: var(--color-canvas);
   color: var(--color-ink);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* File sizes sit in columns and recompute in place; proportional digits make
-   that jitter unreadable. See DESIGN.md. */
+/*
+ * Every file size in the product.
+ *
+ * Geist Mono rather than `font-variant-numeric` on a system stack: sizes sit in
+ * columns and recompute in place while a job runs, and a real monospace with drawn
+ * tabular figures holds those columns still in a way synthesised tabular numerals
+ * on an unknown system font cannot.
+ */
 .tabular {
+  font-family: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.01em;
+}
+
+/* Focus that is visible on both themes without drawing a box in the layout. */
+:where(button, a, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

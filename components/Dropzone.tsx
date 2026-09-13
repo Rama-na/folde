@@ -1,13 +1,20 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { motion } from "motion/react";
+import { FilePlus, Lock } from "@phosphor-icons/react";
+import { useMotionBudget } from "@/lib/use-motion-budget";
 
 /**
- * The way files get in.
+ * The way files get in, and the first thing on the page.
  *
- * Both a drop target and a button, because the two audiences arrive differently:
- * on a phone there is nothing to drag, and tapping has to open the file picker
- * directly. The whole thing is one large tap target for that reason.
+ * It is the hero rather than a box below one. Somebody arriving here is usually
+ * mid-problem and already annoyed; making them read a pitch before they can reach
+ * the thing that helps would be the wrong trade, and it is the one advantage this
+ * has over every tools site with a marketing page bolted on top.
+ *
+ * Both a drop target and a button, because the two audiences arrive differently.
+ * There is nothing to drag on a phone, so the tap has to open the picker directly.
  */
 export function Dropzone({
   onFiles,
@@ -18,6 +25,7 @@ export function Dropzone({
 }) {
   const [over, setOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const budget = useMotionBudget();
 
   const take = useCallback(
     (list: FileList | null) => {
@@ -29,7 +37,7 @@ export function Dropzone({
   );
 
   return (
-    <div
+    <motion.div
       onDragOver={(e) => {
         e.preventDefault();
         if (!disabled) setOver(true);
@@ -40,27 +48,43 @@ export function Dropzone({
         setOver(false);
         if (!disabled) take(e.dataTransfer.files);
       }}
+      // Real feedback for a real pointer state, not decoration: the surface
+      // acknowledges that it is about to receive something.
+      animate={budget === "reduced" ? undefined : { scale: over ? 1.01 : 1 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
       className={[
-        "rounded-[14px] border border-dashed p-8 text-center transition-all duration-150 sm:p-12",
+        "rounded-[18px] border border-dashed p-8 text-center transition-colors duration-150 sm:p-12",
         over
-          ? "border-accent bg-surface shadow-lg"
-          : "border-edge bg-surface/60",
-        disabled ? "opacity-50" : "",
+          ? "border-accent bg-accent-wash"
+          : "border-edge bg-surface hover:border-ink-soft",
+        disabled ? "pointer-events-none opacity-50" : "",
       ].join(" ")}
     >
-      <p className="text-lg font-medium">Drop your documents here</p>
-      <p className="mt-1 text-sm text-ink-soft">
-        PDFs and photos. They never leave your device.
+      <FilePlus
+        size={32}
+        weight="light"
+        className="mx-auto text-accent"
+        aria-hidden
+      />
+
+      <p className="mt-4 text-lg font-medium tracking-tight">
+        Drop your documents here
       </p>
+      <p className="mt-1 text-sm text-ink-soft">PDFs and photos.</p>
 
       <button
         type="button"
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
-        className="mt-5 min-h-[44px] rounded-[10px] bg-accent px-5 py-2.5 font-medium text-accent-ink transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
+        className="mt-6 inline-flex min-h-[44px] items-center rounded-[12px] bg-accent px-6 font-medium text-accent-ink transition-transform duration-150 hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
       >
         Choose files
       </button>
+
+      <p className="mt-6 inline-flex items-center gap-1.5 text-xs text-ink-soft">
+        <Lock size={13} weight="fill" aria-hidden />
+        They never leave your device
+      </p>
 
       <input
         ref={inputRef}
@@ -74,6 +98,6 @@ export function Dropzone({
           e.target.value = "";
         }}
       />
-    </div>
+    </motion.div>
   );
 }
