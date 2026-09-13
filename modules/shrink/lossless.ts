@@ -1,4 +1,4 @@
-import { PDFDocument, PDFName } from "pdf-lib";
+import { PDFDocument, PDFName } from "@cantoo/pdf-lib";
 
 /**
  * Rung 1 — structural shrink. Nothing a reader can see changes.

@@ -9,7 +9,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { formatBytes, KB } from "../lib/bytes";
 import { nodeCodec } from "../modules/shrink/codec-node";
 import { pieceName, splitToFit, type SplitPiece } from "../modules/split";

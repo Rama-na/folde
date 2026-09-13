@@ -131,9 +131,18 @@ already shipped bugs that a green Node run happily reported as fine.
 
 ## Licensing note
 
-This project uses permissively licensed libraries only: `pdf-lib` (MIT),
+This project uses permissively licensed libraries only: `@cantoo/pdf-lib` (MIT),
 `pdfjs-dist` (Apache-2.0), `fflate` (MIT), `sharp` (Apache-2.0), `motion` (MIT),
 `@phosphor-icons/react` (MIT) and `lenis` (MIT).
+
+**`pdf-lib` itself has not shipped since May 2022.** Everything here depended on it,
+which is a four-year-dormant library holding up the part of the product that opens
+people's documents. `@cantoo/pdf-lib` is the actively maintained fork, same API, same
+MIT licence, and it brings three things this codebase actually wants: AES-256
+encryption and decryption (so a PDF can be locked or unlocked), recovery of PDFs with
+a truncated trailer instead of failing hard, and `extractContents()` for pulling
+text, images and approximate vector graphics out of a page. The swap was one line per
+import and the whole suite passed unchanged.
 
 **GSAP is not here, and was asked for.** Since 3.13 it costs nothing, but it ships
 under a bespoke "Standard no charge" licence rather than a permissive one, which puts

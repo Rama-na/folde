@@ -74,10 +74,16 @@ These are the product. Breaking one is a bug even if the UI looks fine.
 - `lib/presets.ts` is the single source of truth for every size target. Do not hardcode
   a byte number anywhere else.
 - `lib/brand.ts` holds the product name. Do not type "ReadyPDF" into copy.
-- Licensing: this project uses **permissively licensed** libraries only (`pdf-lib` MIT,
-  `pdfjs-dist` Apache-2.0, `fflate` MIT, `sharp` Apache-2.0). Ghostscript and MuPDF are
-  AGPL — do not add either, in any form including WASM, without an explicit decision
-  from the owner to buy a commercial licence from Artifex.
+- Licensing: this project uses **permissively licensed** libraries only
+  (`@cantoo/pdf-lib` MIT, `pdfjs-dist` Apache-2.0, `fflate` MIT, `sharp` Apache-2.0).
+  Ghostscript and MuPDF are AGPL — do not add either, in any form including WASM,
+  without an explicit decision from the owner to buy a commercial licence from
+  Artifex. MPL-2.0 (LibreOffice and its WASM builds) is file-level copyleft rather
+  than AGPL and would be acceptable in principle — but see the note in README about
+  why it is not acceptable in a browser.
+- **Use `@cantoo/pdf-lib`, never `pdf-lib`.** Upstream has not shipped since May 2022.
+  The fork is API-compatible and adds encryption, truncated-file recovery and
+  `extractContents()`.
 
 ## Testing
 

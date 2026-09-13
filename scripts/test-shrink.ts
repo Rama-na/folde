@@ -13,7 +13,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { formatBytes, rawAttachmentBudget, KB, MB } from "../lib/bytes";
 import { shrinkPdf } from "../modules/shrink";
 import { nodeCodec } from "../modules/shrink/codec-node";

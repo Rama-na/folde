@@ -12,7 +12,7 @@
  */
 import { mkdirSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "@cantoo/pdf-lib";
 import sharp from "sharp";
 
 const OUT = join(process.cwd(), "tests", "fixtures", "pile");
