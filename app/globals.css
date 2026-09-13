@@ -34,6 +34,33 @@
   --color-wont: #c02617;
 
   /*
+   * The one inverted panel on the site.
+   *
+   * Neon does not exist on a white page. A glow is light added to darkness, and
+   * against `canvas` the same effect reads as a smudge — so the sweep gets somewhere
+   * to live rather than being talked out of its own physics. It is a fixed dark
+   * ground in both themes, which is also why it is its own token and not a shade of
+   * `surface`: `surface` flips with the theme and this deliberately does not.
+   *
+   * Used once, on the measured claim, because a second inverted panel would make it
+   * a style rather than an emphasis.
+   */
+  --color-stage: #080b11;
+  --color-stage-ink: #eef1f6;
+  --color-stage-soft: #97a3b6;
+  --color-stage-edge: #1d2534;
+
+  /*
+   * The panel keeps the dark theme's accent and green in both themes, because the
+   * panel is dark in both. Cobalt `#2347d9` on this ground is 2.8:1 and the light
+   * `fits` green is 3.6:1 — neither passes, and the glow drawn in the darker cobalt
+   * reads as a smudge rather than as light. The rule is still one accent; this is
+   * the same accent at the value the background requires.
+   */
+  --color-stage-accent: #6f8dff;
+  --color-stage-fits: #4ade80;
+
+  /*
    * Radius lock: 12px on everything interactive, 18px on the drop zone alone.
    * Mixed radii was one of the tells in the previous build.
    */
@@ -68,6 +95,10 @@
 
     --color-fits: #4ade80;
     --color-wont: #ff7a6b;
+
+    /* Lifted off the canvas rather than matching it, or the panel disappears. */
+    --color-stage: #111825;
+    --color-stage-edge: #29334480;
   }
 }
 
@@ -134,4 +165,37 @@ html.lenis body {
 
 .lenis.lenis-stopped {
   overflow: hidden;
+}
+
+/*
+ * The neon tube.
+ *
+ * Four shadows, not one. A single large glow is what a blur filter looks like; what
+ * a lit tube looks like is a nearly white core, a tight saturated ring, a mid falloff
+ * and a wide dim wash — each an order of magnitude softer than the last. The core is
+ * white rather than accent-coloured on purpose: a real tube over-exposes at the
+ * centre and only shows its colour in the halo, and skipping that is most of why a
+ * CSS "neon" usually reads as a coloured line.
+ *
+ * The vertical fade keeps it from ending in two hard corners, which nothing that
+ * emits light does.
+ */
+.neon-bar {
+  /* Overridable, so the tube can be lit in something else where that ever makes
+     sense. It defaults to the panel's accent rather than the page's. */
+  --neon: var(--color-stage-accent);
+
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--neon) 20%, white) 14%,
+    color-mix(in srgb, var(--neon) 10%, white) 50%,
+    color-mix(in srgb, var(--neon) 20%, white) 86%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 2px 0 color-mix(in srgb, var(--neon) 40%, white),
+    0 0 9px 1px var(--neon),
+    0 0 26px 5px color-mix(in srgb, var(--neon) 55%, transparent),
+    0 0 64px 16px color-mix(in srgb, var(--neon) 22%, transparent);
 }
