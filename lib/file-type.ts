@@ -99,13 +99,26 @@ function indexOfAscii(b: Uint8Array, text: string): number {
 /**
  * The name a shrunk file should carry.
  *
- * Output is always JPEG — Indian portals specify it explicitly, and a PNG that
- * quietly kept its name would be rejected at the upload form for being the wrong
- * format. Renaming it here means the user sees the change before they submit it
- * rather than after.
+ * A re-encoded image is always JPEG — Indian portals specify it explicitly, and a
+ * PNG that quietly kept its name would be rejected at the upload form for being the
+ * wrong format. Renaming it here means the user sees the change before they submit
+ * it rather than after.
+ *
+ * `untouched` is what keeps that rule honest. A PNG already under the limit is
+ * handed back byte for byte, because re-encoding a file that already fits destroys
+ * quality for nothing — and a file that is still PNG inside must not be called
+ * `.jpg`. It was, briefly: the rename was keyed on what came in rather than on what
+ * went out, so the one path that deliberately does not convert was also the one path
+ * that lied about its own format. Portals that sniff content reject that outright,
+ * and the ones that do not are worse, because the mismatch surfaces later and
+ * somewhere else.
  */
-export function outputName(name: string, kind: FileKind): string {
-  if (kind === "pdf" || kind === "unknown") return name;
+export function outputName(
+  name: string,
+  kind: FileKind,
+  untouched: boolean,
+): string {
+  if (kind === "pdf" || kind === "unknown" || untouched) return name;
 
   const dot = name.lastIndexOf(".");
   const stem = dot > 0 ? name.slice(0, dot) : name;

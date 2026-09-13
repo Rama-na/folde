@@ -92,7 +92,13 @@ async function runJob(
 
         emit(jobId, {
           id: file.id,
-          name: outputName(file.name, result.kind),
+          // "passthrough" is exactly the rung that returns the source bytes
+          // unmodified, so it is exactly the rung that must keep the source name.
+          name: outputName(
+            file.name,
+            result.kind,
+            result.rung === "passthrough",
+          ),
           originalSize: result.originalSize,
           size: result.size,
           bytes: toTransferable(result.bytes),

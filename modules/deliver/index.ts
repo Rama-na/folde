@@ -122,6 +122,28 @@ export function canShareFiles(files: readonly DeliverableFile[]): boolean {
 }
 
 /**
+ * The same question, asked by name instead of by content.
+ *
+ * `navigator.canShare` decides on the count and the types, never the bytes. Asking
+ * it with the real files means building a `File` per attachment, and a `Blob`
+ * copies — so a render of three batches holding 40 MB copied 40 MB to find out
+ * whether a button should be visible, every single render. Empty probes answer the
+ * identical question for nothing.
+ */
+export function canShareNames(names: readonly string[]): boolean {
+  if (typeof navigator === "undefined" || !navigator.canShare) return false;
+  try {
+    return navigator.canShare({
+      files: names.map(
+        (name) => new File([new Uint8Array(0)], name, { type: mimeFor(name) }),
+      ),
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Hand the files to the operating system's share sheet — Mail, Gmail, WhatsApp,
  * Drive, whatever the user actually has.
  *

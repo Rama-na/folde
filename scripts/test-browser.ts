@@ -12,6 +12,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { cpSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { unzipSync } from "fflate";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { buildPile, pileExists } from "./make-pile";
 
@@ -653,6 +654,112 @@ async function runDarkDetail(browser: Browser): Promise<void> {
   }
 }
 
+/**
+ * The archive, all the way to disk.
+ *
+ * Written because somebody finished a real job, pressed Save, and got four separate
+ * files where they were expecting one bundle. Loose is the default and the button
+ * said so, so nothing was broken — but "nothing was broken" was a guess until this
+ * existed, and the guess covered a path no test had ever walked. `zipBatch` being
+ * correct in Node says nothing about whether the browser hands the bytes over.
+ *
+ * So this asserts the whole way down: the default really is loose, choosing the
+ * archive really collapses the batch to one attachment, and the thing that lands is
+ * a ZIP that opens and still contains every file that went into it.
+ */
+async function runZip(browser: Browser): Promise<void> {
+  console.log("\nbrowser: choosing the ZIP actually delivers a ZIP");
+
+  // Deliberately a pile that already fits. That was the owner's actual situation —
+  // "1.8 MB -> 1.8 MB", nothing compressed, four files saved instead of a bundle —
+  // so it is the case worth nailing down rather than a contrived one.
+  const names = ["photo-small.jpg", "text.pdf", "signature.png", "tiny.pdf"];
+  const context = await browser.newContext({ acceptDownloads: true });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+
+  try {
+    await page.goto(ORIGIN);
+    await upload(page, names);
+    await page.getByRole("tab", { name: "Sending by email" }).click();
+    await page.getByRole("button", { name: /^5 MB/ }).click();
+    await page.getByRole("button", { name: "Make it fit" }).click();
+    await page
+      .getByRole("heading", { name: /email(s)? to send/ })
+      .waitFor({ timeout: 180_000 });
+    await settle(page);
+    await assertClean(page, "the zip run");
+
+    // Everything here is already inside a 5 MB cap, so this is also the "already
+    // fits" path: one email, and the files handed back untouched.
+    const parts = await page.getByText("on the wire").count();
+    check("the four files need only one email", parts === 1, `${parts} parts`);
+
+    // The other half of what looked like a bug. A pile that already fits comes back
+    // the same size on purpose, so there is no percentage to show — re-encoding a
+    // file that already meets the limit spends quality to buy nothing.
+    check(
+      "nothing was compressed, because nothing needed to be",
+      (await page.getByText("% smaller").count()) === 0,
+    );
+
+    const save = page.getByRole("button", { name: /^Save / });
+    check(
+      "loose is what you get unless you say otherwise",
+      (await save.first().textContent())?.includes(`Save ${names.length} files`) ===
+        true,
+      (await save.first().textContent()) ?? "",
+    );
+
+    await page.getByRole("radio", { name: "One ZIP per email" }).click();
+    await page.waitForTimeout(200);
+
+    const label = (await save.first().textContent())?.trim() ?? "";
+    console.log(`  the button now offers: ${label}`);
+    check(
+      "the button names the archive it is about to write",
+      /Save 01 of 01\.zip/.test(label),
+      label,
+    );
+
+    const pending = page.waitForEvent("download", { timeout: 30_000 });
+    await save.first().click();
+    const download = await pending;
+    const bytes = readFileSync(await download.path());
+
+    check(
+      "one attachment lands, named as a part",
+      download.suggestedFilename() === "01 of 01.zip",
+      download.suggestedFilename(),
+    );
+    check(
+      "and it is genuinely a ZIP",
+      bytes.subarray(0, 2).toString() === "PK",
+      `starts with ${JSON.stringify(bytes.subarray(0, 4).toString("latin1"))}`,
+    );
+
+    // A ZIP that opens is the point. A ZIP that opens and is missing file three is
+    // worse than no ZIP at all, because nobody finds out until the recipient does.
+    const entries = unzipSync(new Uint8Array(bytes));
+    const inside = Object.keys(entries).sort();
+    console.log(`  ${bytes.length} bytes containing: ${inside.join(", ")}`);
+    check(
+      "with every file still inside it, under the name it arrived with",
+      inside.length === names.length && names.every((n) => inside.includes(n)),
+      inside.join(", "),
+    );
+    check(
+      "and none of them empty",
+      Object.values(entries).every((b) => b.length > 0),
+    );
+  } finally {
+    await context.close();
+  }
+}
+
 async function main(): Promise<void> {
   assembleStandalone();
 
@@ -686,6 +793,7 @@ async function main(): Promise<void> {
     await run(page);
     await runReducedMotion(browser);
     await runThemes(browser);
+    await runZip(browser);
     await runPile(browser);
   } finally {
     await browser?.close();
