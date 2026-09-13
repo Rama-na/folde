@@ -277,19 +277,21 @@ function OnYourDevice() {
 function NotThis() {
   return (
     <Band>
-      <Eyebrow>What this is not</Eyebrow>
-      <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
-        One job, finished.
+      <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+        The usual tools are here. The limit is the point.
       </h2>
       <p className="mt-4 max-w-prose leading-relaxed text-ink-soft">
-        No editor, no signing, no annotation, no converting documents into other
-        formats. There are a dozen sites for all of that and several are good.
+        Merge, reorder, rotate, take out pages, photos into a PDF and pages back
+        out as photos, a password on or off. You will not find them in a grid of
+        twenty-four tiles, because you should not have to pick a tool before the
+        site has seen your files. Drop them first and it offers the ones that
+        apply: six PDFs can be merged, one page cannot be split.
       </p>
       <p className="mt-3 max-w-prose leading-relaxed text-ink-soft">
-        What none of them will do is tell you, before you submit anything,
-        whether the file is genuinely under your limit — and what to do when it
-        cannot get there. That is the entire product, and adding the rest would
-        only make it harder to trust the part that matters.
+        What none of the other sites will do is tell you, before you submit
+        anything, whether the file is genuinely under your limit, and what to do
+        when it cannot get there. That is still the front door here, and
+        everything else sits underneath it.
       </p>
     </Band>
   );

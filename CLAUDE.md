@@ -12,9 +12,25 @@ Two shapes of the same job:
 - **Email attachments** — a pile of documents that has to reach someone whose mail
   system caps attachments at 5 MB.
 
-It is **not** a PDF tools site. There is no editor, no signing, no annotation, no
-PDF→Word. Those are the crowded part of the market and they are deferred until the
-wedge is proven. If a change would be at home on iLovePDF, it does not belong here yet.
+There are tools alongside it now — merge, reorder, rotate, delete, extract pages,
+images in both directions, lock and unlock — and the difference between this and a
+general PDF tools site is structural rather than a matter of taste.
+
+**Files first, tools second.** Every site in this category asks you to pick a tool and
+then upload, which is why their front pages are walls of twenty-four identical tiles:
+with no files in hand, the only honest thing to show is everything. Here the files
+arrive first and `modules/tools/offer.ts` returns only what applies to them. Six PDFs
+can be merged; one page cannot be split; a folder of photographs is not going to be
+unlocked. Nothing is hidden behind cleverness, only behind not applying.
+
+**The size limit stays the front door.** The target picker is on screen the moment
+files land, and the tools sit underneath it in a quieter list. If a change would put a
+tool above the size picker, or turn that list into a grid, it does not belong here.
+
+Still not here, and not by accident: an editor, signing, annotation. Those need a
+rendering and hit-testing surface nobody can use on a phone. PDF→Word is researched
+rather than refused — see the note in README; the honest browser version is a text
+draft, and real layout fidelity needs a server.
 
 ## Correctness rules
 
@@ -35,9 +51,14 @@ These are the product. Breaking one is a bug even if the UI looks fine.
   filter and most corporate inbound filters. Every output ReadyPDF produces opens on its own.
 - **Dividing a document is a delivery move, not a feature.** A PDF that cannot be sent
   even alone once the ladder has run out is divided by page into whole PDFs that each
-  fit — automatically, measured, and only for mail. There is no page-picking UI and
-  there must not be one: choosing ranges is a PDF tool, and a portal form asking for
-  one document is not helped by three. See `modules/split`.
+  fit — automatically, measured, and only for mail. This is separate from the "take out
+  some pages" tool, which a person drives on purpose; the automatic one has no
+  page-picking UI and must not grow one, and it never runs for a portal upload, where a
+  form asking for one document is not helped by three. See `modules/split`.
+- **Every tool returns a measured result or a sentence.** Never a throw for something
+  the user did, never a size that was not taken from the bytes being handed back, and
+  never a file silently dropped from a merge — anything unusable is named. See
+  `modules/tools/types.ts`.
 - **Prefer loose attachments over ZIP.** Many government and enterprise mail systems
   block `.zip` outright. ZIP is opt-in, never the default.
 - **Climb the compression ladder no further than needed.** Rasterizing a PDF destroys
@@ -89,7 +110,10 @@ These are the product. Breaking one is a bug even if the UI looks fine.
 
 - Tests are `tsx` scripts under `scripts/test-*.ts`, wired to npm scripts. Do not
   introduce jest or vitest — this matches the sibling Thinnai repo.
-- Every operation in `modules/shrink` and `modules/pack` has a test.
+- Every operation in `modules/shrink`, `modules/pack`, `modules/split` and
+  `modules/tools` has a test. The tool tests are about not losing things: they reload
+  the output and count what is really in it, because a merge that drops a document
+  produces a plausible file that is wrong.
 - The shrink tests run the committed fixture corpus in `tests/fixtures/` against every
   preset, and assert the target was met or honestly refused.
 
