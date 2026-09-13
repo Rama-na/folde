@@ -7,3 +7,4 @@ next-env.d.ts
 /tests/output
 public/pdf.worker.min.mjs
 tests/fixtures/pile/
+out
