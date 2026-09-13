@@ -9,6 +9,7 @@ import type { Preset } from "@/lib/presets";
 import { useShrinkJob } from "@/lib/use-shrink-job";
 import { useMotionBudget } from "@/lib/use-motion-budget";
 import { Dropzone } from "@/components/Dropzone";
+import { Landing } from "@/components/landing/Landing";
 import { FileList, type ListedFile } from "@/components/FileList";
 import { Results } from "@/components/Results";
 import { TargetPicker } from "@/components/TargetPicker";
@@ -90,6 +91,11 @@ export default function Home() {
 
   const finished = !job.running && job.outcomes.length > 0;
 
+  // Nothing loaded and nothing running: the only moment the case for the product is
+  // worth anybody's screen. The instant a file arrives this is a tool, and a tool
+  // with a sales pitch stapled underneath is a worse tool.
+  const idle = files.length === 0 && !job.running && !finished;
+
   return (
     <div className="min-h-dvh">
       <main className="mx-auto max-w-5xl px-5 py-10 sm:py-14">
@@ -117,8 +123,24 @@ export default function Home() {
            * the thing you came to use; the right carries state once there is any,
            * and is not rendered at all when empty rather than reserving space.
            */
-          <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-8">
+          <div
+            id="drop"
+            className="mt-8 grid scroll-mt-8 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-8"
+          >
             <div className="space-y-6">
+              {idle && (
+                <div className="max-w-xl">
+                  <h1 className="text-3xl font-semibold leading-[1.15] tracking-tight sm:text-[2.6rem]">
+                    Name the limit. Get files that land under it.
+                  </h1>
+                  <p className="mt-3 leading-relaxed text-ink-soft">
+                    A scan, a passport photograph, or a folder of forty. Every
+                    size you see here has been measured on the real output, on
+                    your device — nothing is uploaded and nothing is guessed.
+                  </p>
+                </div>
+              )}
+
               <Dropzone onFiles={addFiles} disabled={job.running} />
 
               {files.length > 0 && (
@@ -180,10 +202,18 @@ export default function Home() {
         )}
       </main>
 
-      <footer className="mx-auto max-w-5xl px-5 pb-10 text-sm text-ink-soft">
-        <div className="border-t border-edge pt-6">
-          Everything here happens on your device. Your documents are never
-          uploaded.
+      {idle && <Landing />}
+
+      <footer className="mx-auto mt-20 max-w-5xl px-5 pb-10 text-sm text-ink-soft sm:mt-28">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-t border-edge pt-6">
+          <span>
+            <span className="font-medium text-ink">{BRAND.name}</span>{" "}
+            {BRAND.separator} {BRAND.tagline}
+          </span>
+          <span>
+            Everything here happens on your device. Your documents are never
+            uploaded.
+          </span>
         </div>
       </footer>
     </div>

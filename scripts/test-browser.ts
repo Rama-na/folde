@@ -14,6 +14,8 @@ import { cpSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { unzipSync } from "fflate";
 import { chromium, type Browser, type Page } from "playwright-core";
+import { formatBytes } from "../lib/bytes";
+import { MEASURED, STORY } from "../lib/story";
 import { buildPile, pileExists } from "./make-pile";
 
 const PORT = 3311;
@@ -760,6 +762,163 @@ async function runZip(browser: Browser): Promise<void> {
   }
 }
 
+/**
+ * The landing page, and the two ways it could quietly go wrong.
+ *
+ * The first is arithmetic drift. Every figure down there is computed by running the
+ * real packer over an imaginary folder, precisely so that a page cannot end up
+ * advertising numbers the software no longer produces. That only holds if something
+ * checks the rendered text against the module, which is what this does.
+ *
+ * The second is the page eating its own product. The drop zone is the first thing on
+ * the screen and the argument for it is underneath, and the instant somebody has
+ * files loaded the argument is over — a tool with a sales pitch stapled under it is
+ * a worse tool. So: it is there when the page is empty, and gone the moment it is
+ * not.
+ */
+async function runLanding(browser: Browser): Promise<void> {
+  console.log("\nbrowser: the landing page");
+
+  // Phone-sized, because that is who reads it, and because the sequence is the one
+  // part of the product that pins a full viewport and can overflow if it is wrong.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+
+  try {
+    await page.goto(ORIGIN);
+    await settle(page);
+
+    check(
+      "the drop zone is above the argument for it",
+      (await page.locator("#drop").boundingBox())!.y <
+        (await page.getByText("One job, finished.").boundingBox())!.y,
+    );
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check("no horizontal scroll at 390px", overflow <= 0, `${overflow}px over`);
+
+    // Scrolled by wheel rather than by scrollTo: smooth scrolling intercepts the
+    // wheel and interpolates it, so a wheel is what a real visitor's scroll looks
+    // like by the time the sequence sees it.
+    await page.mouse.move(195, 500);
+    for (let i = 0; i < 14; i++) {
+      await page.mouse.wheel(0, 400);
+      await page.waitForTimeout(90);
+    }
+    await settle(page);
+
+    // Scoped to the sequence: the aside above it also says "on the wire", in the
+    // sentence about why a 4.7 MB email bounces, and an unscoped match counts it.
+    const sequence = page.locator(
+      'section[aria-label="What happens to a folder of documents"]',
+    );
+    const wire = (await sequence.getByText("on the wire").allTextContents()).map(
+      (t) => t.trim(),
+    );
+    console.log(`  the sequence ends on: ${wire.join(", ")}`);
+    check(
+      "the sequence reaches its packed state",
+      wire.length === STORY.parts.length,
+      `${wire.length} parts shown, ${STORY.parts.length} expected`,
+    );
+    // The figures on the page are the packer's, not a copy of them that drifted.
+    check(
+      "and every weight on it is the one the packer computed",
+      STORY.parts.every((part) =>
+        wire.some((text) => text.includes(formatBytes(part.encodedBytes))),
+      ),
+      `page: ${wire.join(" | ")}`,
+    );
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await settle(page);
+    check(
+      "the measured claim carries the figure the suite actually produces",
+      (await page.getByText(formatBytes(MEASURED.after)).count()) > 0,
+      formatBytes(MEASURED.after),
+    );
+
+    const small = await page.evaluate(() => {
+      const out: string[] = [];
+      for (const el of document.querySelectorAll("button, input, select, a")) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        if (r.height < 44) out.push(`${el.tagName}:${Math.round(r.height)}px`);
+      }
+      return out;
+    });
+    check(
+      "every control on it is at least 44px tall",
+      small.length === 0,
+      small.join(", "),
+    );
+
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf"]);
+    await page.getByText("1 file", { exact: false }).first().waitFor();
+    check(
+      "and all of it gets out of the way once there are files to work on",
+      (await page.getByText("One job, finished.").count()) === 0,
+    );
+    await assertClean(page, "the landing");
+  } finally {
+    await context.close();
+  }
+
+  // The sequence is scroll-driven, so for anybody who has asked for less movement
+  // there is no sequence at all — which means the same facts have to be sitting
+  // there already, spelled out, with no scrolling required to reach them.
+  console.log("\nbrowser: the landing page without motion");
+  const still = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { width: 390, height: 844 },
+  });
+  const page2 = await still.newPage();
+  page2.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+  try {
+    await page2.goto(ORIGIN);
+    await settle(page2);
+    const wire = (
+      await page2
+        .locator('section[aria-label="What happens to a folder of documents"]')
+        .getByText("on the wire")
+        .allTextContents()
+    ).map((t) => t.trim());
+    check(
+      "the same parts are on the page with nothing to scroll",
+      wire.length === STORY.parts.length &&
+        STORY.parts.every((part) =>
+          wire.some((text) => text.includes(formatBytes(part.encodedBytes))),
+        ),
+      wire.join(" | "),
+    );
+    check(
+      "and the before and after of each file is stated, not animated",
+      (await page2.getByText(formatBytes(STORY.files[0].before)).count()) > 0 &&
+        (await page2.getByText(formatBytes(STORY.files[0].after)).count()) > 0,
+    );
+    const overflow = await page2.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check("still no horizontal scroll", overflow <= 0, `${overflow}px over`);
+  } finally {
+    await still.close();
+  }
+}
+
 async function main(): Promise<void> {
   assembleStandalone();
 
@@ -793,6 +952,7 @@ async function main(): Promise<void> {
     await run(page);
     await runReducedMotion(browser);
     await runThemes(browser);
+    await runLanding(browser);
     await runZip(browser);
     await runPile(browser);
   } finally {
