@@ -115,3 +115,23 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Lenis, the minimum it needs.
+ *
+ * Only in effect while it is actually running — it adds these classes itself, and
+ * under a reduced-motion or Save-Data budget it is never constructed, so none of
+ * this applies and the browser's own scrolling is untouched.
+ */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}

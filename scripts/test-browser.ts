@@ -12,7 +12,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { cpSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { unzipSync } from "fflate";
 import { chromium, type Browser, type Page } from "playwright-core";
+import { formatBytes } from "../lib/bytes";
+import { MEASURED, STORY } from "../lib/story";
 import { buildPile, pileExists } from "./make-pile";
 
 const PORT = 3311;
@@ -653,6 +656,368 @@ async function runDarkDetail(browser: Browser): Promise<void> {
   }
 }
 
+/**
+ * The archive, all the way to disk.
+ *
+ * Written because somebody finished a real job, pressed Save, and got four separate
+ * files where they were expecting one bundle. Loose is the default and the button
+ * said so, so nothing was broken — but "nothing was broken" was a guess until this
+ * existed, and the guess covered a path no test had ever walked. `zipBatch` being
+ * correct in Node says nothing about whether the browser hands the bytes over.
+ *
+ * So this asserts the whole way down: the default really is loose, choosing the
+ * archive really collapses the batch to one attachment, and the thing that lands is
+ * a ZIP that opens and still contains every file that went into it.
+ */
+async function runZip(browser: Browser): Promise<void> {
+  console.log("\nbrowser: choosing the ZIP actually delivers a ZIP");
+
+  // Deliberately a pile that already fits. That was the owner's actual situation —
+  // "1.8 MB -> 1.8 MB", nothing compressed, four files saved instead of a bundle —
+  // so it is the case worth nailing down rather than a contrived one.
+  const names = ["photo-small.jpg", "text.pdf", "signature.png", "tiny.pdf"];
+  const context = await browser.newContext({ acceptDownloads: true });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+
+  try {
+    await page.goto(ORIGIN);
+    await upload(page, names);
+    await page.getByRole("tab", { name: "Sending by email" }).click();
+    await page.getByRole("button", { name: /^5 MB/ }).click();
+    await page.getByRole("button", { name: "Make it fit" }).click();
+    await page
+      .getByRole("heading", { name: /email(s)? to send/ })
+      .waitFor({ timeout: 180_000 });
+    await settle(page);
+    await assertClean(page, "the zip run");
+
+    // Everything here is already inside a 5 MB cap, so this is also the "already
+    // fits" path: one email, and the files handed back untouched.
+    const parts = await page.getByText("on the wire").count();
+    check("the four files need only one email", parts === 1, `${parts} parts`);
+
+    // The other half of what looked like a bug. A pile that already fits comes back
+    // the same size on purpose, so there is no percentage to show — re-encoding a
+    // file that already meets the limit spends quality to buy nothing.
+    check(
+      "nothing was compressed, because nothing needed to be",
+      (await page.getByText("% smaller").count()) === 0,
+    );
+
+    const save = page.getByRole("button", { name: /^Save / });
+    check(
+      "loose is what you get unless you say otherwise",
+      (await save.first().textContent())?.includes(`Save ${names.length} files`) ===
+        true,
+      (await save.first().textContent()) ?? "",
+    );
+
+    await page.getByRole("radio", { name: "One ZIP per email" }).click();
+    await page.waitForTimeout(200);
+
+    const label = (await save.first().textContent())?.trim() ?? "";
+    console.log(`  the button now offers: ${label}`);
+    check(
+      "the button names the archive it is about to write",
+      /Save 01 of 01\.zip/.test(label),
+      label,
+    );
+
+    const pending = page.waitForEvent("download", { timeout: 30_000 });
+    await save.first().click();
+    const download = await pending;
+    const bytes = readFileSync(await download.path());
+
+    check(
+      "one attachment lands, named as a part",
+      download.suggestedFilename() === "01 of 01.zip",
+      download.suggestedFilename(),
+    );
+    check(
+      "and it is genuinely a ZIP",
+      bytes.subarray(0, 2).toString() === "PK",
+      `starts with ${JSON.stringify(bytes.subarray(0, 4).toString("latin1"))}`,
+    );
+
+    // A ZIP that opens is the point. A ZIP that opens and is missing file three is
+    // worse than no ZIP at all, because nobody finds out until the recipient does.
+    const entries = unzipSync(new Uint8Array(bytes));
+    const inside = Object.keys(entries).sort();
+    console.log(`  ${bytes.length} bytes containing: ${inside.join(", ")}`);
+    check(
+      "with every file still inside it, under the name it arrived with",
+      inside.length === names.length && names.every((n) => inside.includes(n)),
+      inside.join(", "),
+    );
+    check(
+      "and none of them empty",
+      Object.values(entries).every((b) => b.length > 0),
+    );
+  } finally {
+    await context.close();
+  }
+}
+
+/**
+ * The landing page, and the two ways it could quietly go wrong.
+ *
+ * The first is arithmetic drift. Every figure down there is computed by running the
+ * real packer over an imaginary folder, precisely so that a page cannot end up
+ * advertising numbers the software no longer produces. That only holds if something
+ * checks the rendered text against the module, which is what this does.
+ *
+ * The second is the page eating its own product. The drop zone is the first thing on
+ * the screen and the argument for it is underneath, and the instant somebody has
+ * files loaded the argument is over — a tool with a sales pitch stapled under it is
+ * a worse tool. So: it is there when the page is empty, and gone the moment it is
+ * not.
+ */
+async function runLanding(browser: Browser): Promise<void> {
+  console.log("\nbrowser: the landing page");
+
+  // Phone-sized, because that is who reads it, and because the sequence is the one
+  // part of the product that pins a full viewport and can overflow if it is wrong.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+
+  try {
+    await page.goto(ORIGIN);
+    await settle(page);
+
+    check(
+      "the drop zone is above the argument for it",
+      (await page.locator("#drop").boundingBox())!.y <
+        (await page.getByText("One job, finished.").boundingBox())!.y,
+    );
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check("no horizontal scroll at 390px", overflow <= 0, `${overflow}px over`);
+
+    // Scrolled by wheel rather than by scrollTo: smooth scrolling intercepts the
+    // wheel and interpolates it, so a wheel is what a real visitor's scroll looks
+    // like by the time the sequence sees it.
+    await page.mouse.move(195, 500);
+    for (let i = 0; i < 14; i++) {
+      await page.mouse.wheel(0, 400);
+      await page.waitForTimeout(90);
+    }
+    await settle(page);
+
+    // Scoped to the sequence: the aside above it also says "on the wire", in the
+    // sentence about why a 4.7 MB email bounces, and an unscoped match counts it.
+    const sequence = page.locator(
+      'section[aria-label="What happens to a folder of documents"]',
+    );
+    const wire = (await sequence.getByText("on the wire").allTextContents()).map(
+      (t) => t.trim(),
+    );
+    console.log(`  the sequence ends on: ${wire.join(", ")}`);
+    check(
+      "the sequence reaches its packed state",
+      wire.length === STORY.parts.length,
+      `${wire.length} parts shown, ${STORY.parts.length} expected`,
+    );
+    // The figures on the page are the packer's, not a copy of them that drifted.
+    check(
+      "and every weight on it is the one the packer computed",
+      STORY.parts.every((part) =>
+        wire.some((text) => text.includes(formatBytes(part.encodedBytes))),
+      ),
+      `page: ${wire.join(" | ")}`,
+    );
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await settle(page);
+    check(
+      "the measured claim carries the figure the suite actually produces",
+      (await page.getByText(formatBytes(MEASURED.after)).count()) > 0,
+      formatBytes(MEASURED.after),
+    );
+
+    const small = await page.evaluate(() => {
+      const out: string[] = [];
+      for (const el of document.querySelectorAll("button, input, select, a")) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        if (r.height < 44) out.push(`${el.tagName}:${Math.round(r.height)}px`);
+      }
+      return out;
+    });
+    check(
+      "every control on it is at least 44px tall",
+      small.length === 0,
+      small.join(", "),
+    );
+
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf"]);
+    await page.getByText("1 file", { exact: false }).first().waitFor();
+    check(
+      "and all of it gets out of the way once there are files to work on",
+      (await page.getByText("One job, finished.").count()) === 0,
+    );
+    await assertClean(page, "the landing");
+  } finally {
+    await context.close();
+  }
+
+  // The sequence is scroll-driven, so for anybody who has asked for less movement
+  // there is no sequence at all — which means the same facts have to be sitting
+  // there already, spelled out, with no scrolling required to reach them.
+  console.log("\nbrowser: the landing page without motion");
+  const still = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { width: 390, height: 844 },
+  });
+  const page2 = await still.newPage();
+  page2.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+  try {
+    await page2.goto(ORIGIN);
+    await settle(page2);
+    const wire = (
+      await page2
+        .locator('section[aria-label="What happens to a folder of documents"]')
+        .getByText("on the wire")
+        .allTextContents()
+    ).map((t) => t.trim());
+    check(
+      "the same parts are on the page with nothing to scroll",
+      wire.length === STORY.parts.length &&
+        STORY.parts.every((part) =>
+          wire.some((text) => text.includes(formatBytes(part.encodedBytes))),
+        ),
+      wire.join(" | "),
+    );
+    check(
+      "and the before and after of each file is stated, not animated",
+      (await page2.getByText(formatBytes(STORY.files[0].before)).count()) > 0 &&
+        (await page2.getByText(formatBytes(STORY.files[0].after)).count()) > 0,
+    );
+    const overflow = await page2.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check("still no horizontal scroll", overflow <= 0, `${overflow}px over`);
+  } finally {
+    await still.close();
+  }
+}
+
+/**
+ * A document too large to send even on its own.
+ *
+ * The interface used to say "still too large to send even alone. Try a smaller
+ * limit, or split the document" and then offer no way to split the document, which
+ * is a refusal dressed as advice. `test:split` covers the dividing itself. This
+ * covers the part that test cannot: that the worker reaches for it at the right
+ * moment, that the user is told it happened, and that what lands on disk opens.
+ *
+ * Driven through the custom limit box rather than a preset, because a six-page text
+ * document is the fastest honest way to reach this state — text barely compresses,
+ * so the ladder genuinely runs out, and it runs out in seconds rather than by
+ * rasterizing a hundred pages to find out.
+ */
+async function runSplit(browser: Browser): Promise<void> {
+  console.log("\nbrowser: a document that cannot travel whole is divided by page");
+
+  const context = await browser.newContext({ acceptDownloads: true });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+
+  try {
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf"]);
+    await page.getByRole("tab", { name: "Sending by email" }).click();
+    await page.getByLabel("Or type the limit your form gives").fill("10");
+    await page.getByRole("button", { name: "Make it fit" }).click();
+    await page
+      .getByRole("heading", { name: /email(s)? to send/ })
+      .waitFor({ timeout: 180_000 });
+    await settle(page);
+
+    check(
+      "the user is told the document was divided",
+      (await page.getByText("divided by page").count()) > 0,
+      (await page.getByText("still too large to send").count()) > 0
+        ? "it refused instead of dividing"
+        : "no notice appeared",
+    );
+    check(
+      "and told that each piece opens on its own",
+      (await page.getByText("nothing for the recipient to join").count()) > 0,
+    );
+
+    const names = await page.locator("li", { hasText: /\(pages \d/ }).allTextContents();
+    console.log(`  pieces: ${names.map((n) => n.trim().split("\n")[0]).join(" | ")}`);
+    check(
+      "the pieces are named by page range",
+      names.length >= 2,
+      `${names.length} found`,
+    );
+
+    // The arithmetic that dividing quietly breaks. Every piece carries the whole
+    // document's original size, because that is what it was cut from — summed
+    // blindly, a 8.7 KB file reports as 17 KB before a byte was saved.
+    const summary =
+      (await page.locator("section", { hasText: "→" }).first().textContent()) ?? "";
+    console.log(`  summary: ${summary.replace(/\s+/g, " ").trim()}`);
+    const before = /([\d.]+)\s*KB/.exec(summary);
+    const original = fixtureTotal(["text.pdf"]) / 1000;
+    check(
+      "the starting total counts the original once, not once per piece",
+      before !== null && Math.abs(Number(before[1]) - original) < 1,
+      `page says ${before?.[1]} KB, the file is ${original.toFixed(1)} KB`,
+    );
+
+    await assertClean(page, "the split");
+
+    const pending = page.waitForEvent("download", { timeout: 30_000 });
+    await page.getByRole("button", { name: /^Save / }).first().click();
+    const bytes = readFileSync(await (await pending).path());
+    check(
+      "and a piece downloads as a PDF that opens by itself",
+      bytes.subarray(0, 5).toString() === "%PDF-",
+      `${bytes.length} bytes starting ${JSON.stringify(bytes.subarray(0, 5).toString("latin1"))}`,
+    );
+
+    // The other half of the rule: a portal wants one document, so the same file
+    // against the same impossible number must refuse rather than hand back three.
+    await page.goto(ORIGIN);
+    await upload(page, ["text.pdf"]);
+    await page.getByRole("tab", { name: "Uploading to a portal" }).click();
+    await page.getByLabel("Or type the limit your form gives").fill("3");
+    await page.getByRole("button", { name: "Make it fit" }).click();
+    await page.locator("p", { hasText: "→" }).first().waitFor({ timeout: 180_000 });
+    await settle(page);
+    check(
+      "a portal upload is never divided — it refuses instead",
+      (await page.getByText("divided by page").count()) === 0 &&
+        (await page.getByText("could not reach the limit").count()) > 0,
+    );
+  } finally {
+    await context.close();
+  }
+}
+
 async function main(): Promise<void> {
   assembleStandalone();
 
@@ -686,6 +1051,9 @@ async function main(): Promise<void> {
     await run(page);
     await runReducedMotion(browser);
     await runThemes(browser);
+    await runLanding(browser);
+    await runZip(browser);
+    await runSplit(browser);
     await runPile(browser);
   } finally {
     await browser?.close();

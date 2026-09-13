@@ -75,6 +75,8 @@ export function useShrinkJob() {
     (
       files: Array<{ id: string; name: string; bytes: ArrayBuffer }>,
       targets: Array<[string, number | null]>,
+      /** Largest a single attachment may be, for a mail job. Null for a portal. */
+      splitBelow: number | null = null,
     ) => {
       const worker = ensureWorker();
       const jobId = crypto.randomUUID();
@@ -116,7 +118,7 @@ export function useShrinkJob() {
 
       worker.addEventListener("message", onMessage);
       worker.postMessage(
-        { type: "shrink", jobId, files, targets } satisfies WorkerRequest,
+        { type: "shrink", jobId, files, targets, splitBelow } satisfies WorkerRequest,
         files.map((f) => f.bytes),
       );
     },

@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // Snug has no server. There is no `main` here on purpose: with only `assets`,
+  // Wrangler deploys the exported directory as static files and runs no code.
+  //
+  // This file also exists to STOP Wrangler configuring the project for us. With no
+  // config present it detects "Next.js", assumes a server-rendered app, installs
+  // the OpenNext adapter and rebuilds looking for `.next/standalone` - which a
+  // static export never produces, so the deploy dies on a missing
+  // pages-manifest.json after a build that succeeded.
+  "name": "readypdf",
+  "compatibility_date": "2026-09-11",
+
+  "assets": {
+    "directory": "./out",
+    // `next build` with `trailingSlash` emits 404/index.html; serve it for unknown
+    // paths rather than Cloudflare's default plain-text 404.
+    "not_found_handling": "404-page"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

@@ -4,7 +4,13 @@ import { browserCodec } from "@/modules/shrink/codec-browser";
 import { rasterizePdf } from "@/modules/shrink/rasterize-browser";
 import { Cancelled } from "@/modules/shrink/types";
 import { outputName } from "@/lib/file-type";
-import type { FileOutcome, WorkerRequest, WorkerResponse } from "./protocol";
+import { pieceName, splitToFit } from "@/modules/split";
+import type {
+  FileOutcome,
+  WorkerFile,
+  WorkerRequest,
+  WorkerResponse,
+} from "./protocol";
 
 /**
  * All the heavy lifting, off the main thread.
@@ -43,6 +49,7 @@ async function runJob(
 ): Promise<void> {
   const { jobId, files } = request;
   const targets = new Map(request.targets);
+  const splitBelow = request.splitBelow ?? null;
   const controller = new AbortController();
   running.set(jobId, controller);
 
@@ -90,9 +97,27 @@ async function runJob(
           controller.signal,
         );
 
+        // The ladder has been all the way down and this still will not travel
+        // alone. Dividing it by page is the only thing left that is not "sorry",
+        // and it only happens here: for email, for a PDF, after everything else.
+        if (
+          splitBelow !== null &&
+          result.kind === "pdf" &&
+          result.size > splitBelow &&
+          (await emitPieces(jobId, file, source, result.size, splitBelow, controller.signal))
+        ) {
+          continue;
+        }
+
         emit(jobId, {
           id: file.id,
-          name: outputName(file.name, result.kind),
+          // "passthrough" is exactly the rung that returns the source bytes
+          // unmodified, so it is exactly the rung that must keep the source name.
+          name: outputName(
+            file.name,
+            result.kind,
+            result.rung === "passthrough",
+          ),
           originalSize: result.originalSize,
           size: result.size,
           bytes: toTransferable(result.bytes),
@@ -141,6 +166,59 @@ async function runJob(
   } finally {
     running.delete(jobId);
   }
+}
+
+/**
+ * Divide one document and report the pieces as separate files.
+ *
+ * Returns false when there was nothing to divide — a single page, an unreadable
+ * document — so the caller falls through and reports the honest refusal it already
+ * had, rather than swallowing it.
+ *
+ * Each piece becomes its own outcome, which is exactly what it is from here on: the
+ * packer batches them, the results list shows them, and every one of them is a whole
+ * PDF that opens by itself. Nothing downstream needs to know they were once one file
+ * except the notice that tells the user they were.
+ */
+async function emitPieces(
+  jobId: string,
+  file: WorkerFile,
+  source: Uint8Array,
+  compressedSize: number,
+  target: number,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const divided = await splitToFit(
+    source,
+    target,
+    { codec: browserCodec, rasterizer: rasterizePdf, compressedSize },
+    signal,
+  );
+  if (!divided.split || divided.pieces.length < 2) return false;
+
+  for (const [index, piece] of divided.pieces.entries()) {
+    emit(jobId, {
+      // A distinct id per piece: the packer treats these as separate attachments,
+      // and two attachments sharing an id would silently collapse into one.
+      id: `${file.id}~${index + 1}`,
+      name: pieceName(file.name, piece),
+      originalSize: source.byteLength,
+      size: piece.size,
+      bytes: toTransferable(piece.bytes),
+      rung: piece.textPreserved ? "downsample" : "rasterize",
+      ok: piece.ok,
+      textPreserved: piece.textPreserved,
+      shortfall: piece.shortfall,
+      split: {
+        source: file.name,
+        part: index + 1,
+        of: divided.pieces.length,
+        fromPage: piece.fromPage,
+        toPage: piece.toPage,
+      },
+    });
+  }
+  return true;
 }
 
 function emit(jobId: string, outcome: FileOutcome): void {

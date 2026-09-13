@@ -134,18 +134,33 @@ async function main(): Promise<void> {
   {
     const png = new Uint8Array(readFileSync(join(FIXTURES, "signature.png")));
     const result = await shrinkFile(png, 20 * KB, { codec: nodeCodec });
+    const untouched = result.rung === "passthrough";
     check(
-      "a PNG is converted to JPEG",
-      isJpeg(result.bytes) || result.rung === "passthrough",
+      "a PNG is converted to JPEG, unless it was left alone",
+      isJpeg(result.bytes) || untouched,
+    );
+    // The two halves of one rule. Converted, the name has to follow the bytes or
+    // the portal rejects the upload; untouched, the name has to stay put, because
+    // the bytes are still PNG and calling them `.jpg` is the same lie in reverse.
+    check(
+      "the name follows the bytes, whichever way they went",
+      outputName("signature.png", result.kind, untouched) ===
+        (untouched ? "signature.png" : "signature.jpg"),
+      `${outputName("signature.png", result.kind, untouched)} (rung ${result.rung})`,
     );
     check(
-      "and its name changes to match",
-      outputName("signature.png", result.kind) === "signature.jpg",
-      outputName("signature.png", result.kind),
+      "a converted PNG is renamed",
+      outputName("signature.png", "png", false) === "signature.jpg",
+      outputName("signature.png", "png", false),
+    );
+    check(
+      "an untouched PNG is not",
+      outputName("signature.png", "png", true) === "signature.png",
+      outputName("signature.png", "png", true),
     );
     check(
       "while a PDF keeps its name",
-      outputName("scan.pdf", "pdf") === "scan.pdf",
+      outputName("scan.pdf", "pdf", false) === "scan.pdf",
     );
   }
 

@@ -11,7 +11,7 @@ width — to prove it.
 So the right home is a CDN, not a container. That is cheaper, faster from India,
 and there is nothing running to keep patched.
 
-**Recommended: Cloudflare Pages.** Free, unlimited bandwidth, and many Indian
+**Recommended: Cloudflare Workers static assets.** Free, unlimited bandwidth, and many Indian
 points of presence, which matters when the audience is mid-range Android on mobile
 data. A container host would run a Node process in one region to serve files that
 never change.
@@ -22,9 +22,21 @@ keep one deployment story.
 
 ---
 
-## Cloudflare Pages
+## Cloudflare Workers
 
-**1. Merge to `main`.** Pages builds from a branch.
+`wrangler.jsonc` in the repo root does the work. It has no `main` field, only
+`assets`, which is how Wrangler is told to deploy a directory of files and run no
+code at all.
+
+**That file is also load-bearing for a second reason.** With no Wrangler config
+present, `wrangler deploy` inspects the project, detects Next.js, assumes a
+server-rendered app, and installs the OpenNext adapter. OpenNext then rebuilds with
+`npm run build` expecting `.next/standalone`, which a static export never produces,
+and the deploy dies on a missing `pages-manifest.json` — after a build that
+succeeded. If you ever see that error again, the config has gone missing or is not
+being found.
+
+**1. Merge to `main`.**
 
 ```sh
 git checkout main
@@ -32,38 +44,42 @@ git merge claude/practical-allen-7r7bss
 git push origin main
 ```
 
-**2. Create the project.** Cloudflare dashboard → Workers & Pages → Create →
-Pages → Connect to Git → pick `Rama-na/folde`.
-
-**3. Build settings.**
+**2. Project settings** (Workers & Pages → your project → Settings → Build):
 
 | Field | Value |
 |---|---|
-| Framework preset | None |
 | Build command | `npm run build:static` |
-| Build output directory | `out` |
-| Node version | `22` |
+| Deploy command | `npx wrangler deploy` |
+| `NODE_VERSION` | `22` |
 
-Set Node via an environment variable if the UI does not offer it:
-`NODE_VERSION` = `22`.
+Leave the output directory alone. `wrangler.jsonc` points at `out/`, and a value in
+the dashboard will fight it.
 
 There are no other environment variables. If you find yourself adding one, check
 why — nothing in the app reads any.
 
-**4. Save and Deploy.** First build takes two or three minutes, mostly `npm ci`.
-You get a `*.pages.dev` URL.
+**3. Retry the deployment.** The build takes two or three minutes, mostly `npm ci`.
 
-**5. Custom domain.** Pages project → Custom domains → Set up a domain. If the
-domain is already on Cloudflare, DNS is automatic. Otherwise point a CNAME at the
-`pages.dev` hostname.
+**4. Custom domain.** Project → Settings → Domains & Routes → Add. If the domain is
+already on Cloudflare, DNS is automatic.
 
-**6. Check it on a phone**, on mobile data rather than wifi. Drop in a real photo
+**5. Check it on a phone**, on mobile data rather than wifi. Drop in a real photo
 and a real scan. The thing to confirm is that the worker runs and the number lands
 green — that is the whole product.
 
-Every push to `main` redeploys. Pull requests get their own preview URL.
+Every push to `main` redeploys.
 
----
+### The name in the config
+
+`wrangler.jsonc` says `"name": "readypdf"`, matching the Worker you created. That
+is the deployment's name and is unrelated to the product name in `lib/brand.ts`.
+If you rename the Worker, rename it here too or you will deploy a second one.
+
+### If you would rather use Pages
+
+Pages is the older product and still works: create a Pages project, build command
+`npm run build:static`, output directory `out`, no deploy command. Wrangler is not
+involved, so `wrangler.jsonc` is ignored.
 
 ## Railway, if you prefer one deployment story
 
@@ -110,7 +126,7 @@ The container layer itself is unproven — build it once locally before trusting
 ## Getting a release wrong
 
 Both hosts keep previous deployments and can roll back from their dashboard in
-one click. Cloudflare Pages keeps every build; Railway keeps recent ones.
+one click. Cloudflare keeps every deployment; Railway keeps recent ones.
 
 Before any deploy that touches compression, delivery or batching:
 

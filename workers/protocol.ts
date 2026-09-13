@@ -20,6 +20,13 @@ export type WorkerRequest =
       files: WorkerFile[];
       /** Byte target per file id. A null target means leave that file alone. */
       targets: Array<[string, number | null]>;
+      /**
+       * The largest a single attachment can be, for a mail job.
+       *
+       * Null for a portal upload, which is how the worker knows not to divide
+       * anything: a form asking for one document is not helped by three.
+       */
+      splitBelow?: number | null;
     }
   | { type: "cancel"; jobId: string };
 
@@ -34,6 +41,19 @@ export interface FileOutcome {
   ok: boolean;
   textPreserved: boolean;
   shortfall?: string;
+  /**
+   * Set when this outcome is one piece of a document that had to be divided to
+   * travel at all. The user has to be told this happened — they are about to send
+   * somebody three files where they chose one.
+   */
+  split?: {
+    /** The name of the document these pieces came from. */
+    source: string;
+    part: number;
+    of: number;
+    fromPage: number;
+    toPage: number;
+  };
 }
 
 export type WorkerResponse =

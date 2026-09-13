@@ -33,6 +33,11 @@ These are the product. Breaking one is a bug even if the UI looks fine.
 - **Never produce split-volume archives.** No `.zip.001` / `.zip.002`. Sequential split
   archives are a malware-delivery signature and get quarantined by Gmail's outbound
   filter and most corporate inbound filters. Every output Snug produces opens on its own.
+- **Dividing a document is a delivery move, not a feature.** A PDF that cannot be sent
+  even alone once the ladder has run out is divided by page into whole PDFs that each
+  fit — automatically, measured, and only for mail. There is no page-picking UI and
+  there must not be one: choosing ranges is a PDF tool, and a portal form asking for
+  one document is not helped by three. See `modules/split`.
 - **Prefer loose attachments over ZIP.** Many government and enterprise mail systems
   block `.zip` outright. ZIP is opt-in, never the default.
 - **Climb the compression ladder no further than needed.** Rasterizing a PDF destroys

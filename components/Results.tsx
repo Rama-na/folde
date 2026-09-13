@@ -8,6 +8,7 @@ import {
   ShareNetwork,
   WarningCircle,
   TextAa,
+  Scissors,
 } from "@phosphor-icons/react";
 import { formatBytes } from "@/lib/bytes";
 import type { Preset } from "@/lib/presets";
@@ -16,7 +17,7 @@ import { CountBytes } from "@/components/motion/CountBytes";
 import {
   batchFileName,
   buildManifest,
-  canShareFiles,
+  canShareNames,
   downloadAll,
   downloadFile,
   shareFiles,
@@ -47,8 +48,17 @@ export function Results({
   const rasterized = outcomes.filter((o) => o.ok && !o.textPreserved);
   const succeeded = outcomes.filter((o) => o.ok);
 
+  const divided = outcomes.filter((o) => o.split);
+
   const saved = useMemo(() => {
-    const before = outcomes.reduce((n, o) => n + o.originalSize, 0);
+    // Every piece of a divided document carries the whole document's original size,
+    // because that is what it was made from. Summing them blindly counts a 60 MB
+    // scan once per piece and reports a starting total several times larger than
+    // the files the user actually chose — so the first piece speaks for all of them.
+    const before = outcomes.reduce(
+      (n, o) => (o.split && o.split.part > 1 ? n : n + o.originalSize),
+      0,
+    );
     const after = outcomes.reduce((n, o) => n + o.size, 0);
     return { before, after };
   }, [outcomes]);
@@ -84,6 +94,7 @@ export function Results({
       </section>
 
       {failed.length > 0 && <Refusals outcomes={failed} />}
+      {divided.length > 0 && <SplitNotice outcomes={divided} />}
       {rasterized.length > 0 && <RasterWarning count={rasterized.length} />}
 
       {preset.mode === "mail" ? (
@@ -117,6 +128,52 @@ function Refusals({ outcomes }: { outcomes: readonly FileOutcome[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * A document that had to be divided to travel at all.
+ *
+ * Said out loud, in its own block, because the user chose to send one file and is
+ * about to send nine. That is a change to what they asked for and they find out here
+ * or they find out from the recipient.
+ *
+ * The second sentence is the one that matters and it is the reason this feature is
+ * allowed to exist: these are not volumes of an archive. Each is a whole PDF. There
+ * is nothing for anybody to reassemble, and no filter to trip on the way.
+ */
+function SplitNotice({ outcomes }: { outcomes: readonly FileOutcome[] }) {
+  const sources = new Map<string, { of: number; pages: number }>();
+  for (const outcome of outcomes) {
+    if (!outcome.split) continue;
+    const current = sources.get(outcome.split.source);
+    sources.set(outcome.split.source, {
+      of: outcome.split.of,
+      pages: Math.max(current?.pages ?? 0, outcome.split.toPage),
+    });
+  }
+
+  return (
+    <section className="rounded-[12px] border border-edge bg-surface p-4">
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <Scissors size={17} weight="regular" aria-hidden />
+        {sources.size === 1 ? "A document was" : `${sources.size} documents were`}{" "}
+        divided by page
+      </h3>
+      <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-ink-soft">
+        {[...sources].map(([name, { of, pages }]) => (
+          <li key={name}>
+            <span className="font-medium text-ink">{name}</span> could not be sent
+            in one message even on its own, so its {pages} pages went into{" "}
+            <span className="tabular">{of}</span> separate PDFs.
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+        Each one opens by itself. There is nothing for the recipient to join back
+        together, and nothing that will look like a split archive to a mail filter.
+      </p>
     </section>
   );
 }
@@ -195,44 +252,21 @@ function MailBatches({
     return new Uint8Array(found?.bytes ?? new ArrayBuffer(0));
   };
 
-  const filesForBatch = (index: number): DeliverableFile[] => {
-    const batch = batches[index];
-    const loose = batch.items.map((item) => ({
+  const looseFor = (index: number): DeliverableFile[] =>
+    batches[index].items.map((item) => ({
       name: item.name,
       bytes: bytesFor(item.id),
     }));
-    if (!zip) return loose;
-    return [
-      {
-        name: batchFileName(batch, batches.length, "zip"),
-        bytes: zipBatch(loose),
-      },
-    ];
-  };
 
   return (
     <section className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <header>
         <h3 className="text-lg font-semibold tracking-tight">
           {batches.length} email{batches.length === 1 ? "" : "s"} to send
         </h3>
-        <label className="flex min-h-[44px] items-center gap-2 text-sm text-ink-soft">
-          <input
-            type="checkbox"
-            checked={zip}
-            onChange={(e) => setZip(e.target.checked)}
-            className="size-4 accent-accent"
-          />
-          Bundle each as a ZIP
-        </label>
       </header>
 
-      {zip && (
-        <p className="rounded-[12px] border border-edge bg-surface p-3 text-sm leading-relaxed text-ink-soft">
-          Worth knowing: a lot of company and government mail systems reject ZIP
-          attachments outright. Loose files get through more often.
-        </p>
-      )}
+      <DeliveryChoice zip={zip} onChange={setZip} />
 
       {oversized.length > 0 && (
         <p className="rounded-[12px] border border-wont/40 bg-wont/5 p-3 text-sm">
@@ -273,7 +307,8 @@ function MailBatches({
             <BatchContents names={batch.items.map((i) => i.name)} />
 
             <BatchActions
-              files={filesForBatch(i)}
+              loose={looseFor(i)}
+              zipName={zip ? batchFileName(batch, batches.length, "zip") : null}
               label={`Part ${batch.index} of ${batches.length}`}
             />
           </motion.li>
@@ -336,21 +371,117 @@ function BatchContents({ names }: { names: readonly string[] }) {
 }
 
 /**
+ * Loose files, or one ZIP per email.
+ *
+ * This was a checkbox in the corner of the heading, and it lost: the first person to
+ * use the finished build read the results, pressed Save, and was surprised to get
+ * four separate files instead of an archive. The checkbox was off, which was correct
+ * — it just never read as a decision anybody was being asked to make.
+ *
+ * So it is two options that each say what will land, and loose stays the default.
+ * Plenty of company and government mail systems drop ZIP attachments without telling
+ * the sender, and a delivery that silently never arrives is the one failure this
+ * product cannot leave on the table.
+ */
+function DeliveryChoice({
+  zip,
+  onChange,
+}: {
+  zip: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="How each email is attached"
+      className="grid gap-2 sm:grid-cols-2"
+    >
+      <ChoiceCard
+        checked={!zip}
+        onSelect={() => onChange(false)}
+        title="Loose files"
+        detail="Attached one by one. Gets through the most mail filters."
+      />
+      <ChoiceCard
+        checked={zip}
+        onSelect={() => onChange(true)}
+        title="One ZIP per email"
+        detail="A single attachment per part, though many corporate and government servers reject ZIPs outright."
+      />
+    </div>
+  );
+}
+
+function ChoiceCard({
+  checked,
+  onSelect,
+  title,
+  detail,
+}: {
+  checked: boolean;
+  onSelect: () => void;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      onClick={onSelect}
+      className={[
+        "min-h-[44px] rounded-[12px] border p-3 text-left transition-colors duration-150",
+        checked
+          ? "border-accent bg-accent-wash"
+          : "border-edge bg-surface hover:border-ink-soft",
+      ].join(" ")}
+    >
+      <span className="block text-sm font-medium">{title}</span>
+      <span className="mt-0.5 block text-xs leading-snug text-ink-soft">
+        {detail}
+      </span>
+    </button>
+  );
+}
+
+/**
  * Save or share one batch.
  *
  * Share is offered first where the device supports it. On a phone it is the only
  * route that gets an attachment into a mail app without uploading it somewhere
  * first, which is the whole point.
+ *
+ * The archive is built when the button is pressed, not when the card renders. It
+ * used to be built during render, which meant expanding a filename list rezipped
+ * every megabyte on screen — invisible on the four-file case and a freeze on the
+ * forty-two-file one.
  */
 function BatchActions({
-  files,
+  loose,
+  zipName,
   label,
 }: {
-  files: DeliverableFile[];
+  loose: DeliverableFile[];
+  zipName: string | null;
   label: string;
 }) {
   const [busy, setBusy] = useState(false);
-  const shareable = canShareFiles(files);
+
+  // Asked by name: the answer turns on the count and the type, and building the
+  // real files to ask would copy every byte on every render.
+  const shareable = canShareNames(zipName ? [zipName] : loose.map((f) => f.name));
+
+  const resolve = (): DeliverableFile[] =>
+    zipName ? [{ name: zipName, bytes: zipBatch(loose) }] : loose;
+
+  const run = async (send: (files: DeliverableFile[]) => Promise<void>) => {
+    setBusy(true);
+    try {
+      await send(resolve());
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="mt-4 flex flex-wrap gap-2">
@@ -358,12 +489,11 @@ function BatchActions({
         <button
           type="button"
           disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            const ok = await shareFiles(files, label);
-            if (!ok) await downloadAll(files);
-            setBusy(false);
-          }}
+          onClick={() =>
+            run(async (files) => {
+              if (!(await shareFiles(files, label))) await downloadAll(files);
+            })
+          }
           className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[12px] bg-accent px-4 text-sm font-medium text-accent-ink transition-transform duration-150 hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
         >
           <ShareNetwork size={15} weight="bold" aria-hidden />
@@ -373,17 +503,17 @@ function BatchActions({
       <button
         type="button"
         disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          await downloadAll(files);
-          setBusy(false);
-        }}
+        onClick={() => run(downloadAll)}
         className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[12px] border border-edge px-4 text-sm font-medium transition-colors duration-150 hover:border-accent hover:text-accent disabled:opacity-50"
       >
         <DownloadSimple size={15} weight="bold" aria-hidden />
+        {/* Naming the archive outright, because "Save 1 file" is exactly what the
+            person who expected an archive and got four files already read past. */}
         {busy
           ? "Saving…"
-          : `Save ${files.length} file${files.length === 1 ? "" : "s"}`}
+          : zipName
+            ? `Save ${zipName}`
+            : `Save ${loose.length} file${loose.length === 1 ? "" : "s"}`}
       </button>
     </div>
   );
