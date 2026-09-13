@@ -1,7 +1,7 @@
 /**
  * The app, served as plain static files with no Node process behind it.
  *
- * Snug has no API routes, reads no environment at runtime, and does all its work in
+ * ReadyPDF has no API routes, reads no environment at runtime, and does all its work in
  * the browser. If that is true then it does not need a server at all, and the right
  * home for it is a CDN rather than a container. This is the check that settles it:
  * the same journeys as `test:browser`, driven against the exported `out/` directory.

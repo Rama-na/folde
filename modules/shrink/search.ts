@@ -10,7 +10,14 @@ export type Probe = (
 ) => Promise<Attempt>;
 
 export interface SearchOptions {
-  /** Hard ceiling on encode passes. Each one costs real time on a phone. */
+  /**
+   * Hard ceiling on encode passes, counting every one. Each costs real time.
+   *
+   * It used to bound only the narrowing loop, which meant the two bracketing probes
+   * below were spent whatever it said — so a caller asking for one pass got two, and
+   * on a rung where a pass means rendering every page of a 120-page document that is
+   * the difference between thirty-five seconds and seventy.
+   */
   maxProbes?: number;
   /** Stop once the effort bracket is this narrow — further probes buy nothing. */
   tolerance?: number;
@@ -82,6 +89,23 @@ export async function searchForTarget(
     return attempt;
   };
 
+  // One pass, and no room to bracket: spend it on the setting most likely to
+  // succeed rather than the one most likely to look good.
+  //
+  // This only happens where a probe is ruinously expensive — rung 3 on a long
+  // document — and by the time anything reaches that rung the gentle end of the
+  // curve has already been ruled out by every rung below it. An optimistic pass that
+  // misses would leave nothing to fall back on but a refusal, having spent exactly
+  // as long as the pass that would have worked.
+  if (maxProbes <= 1) {
+    const only = await run(1);
+    return {
+      best: only.size <= target ? only : null,
+      closest: closest ?? only,
+      probes,
+    };
+  }
+
   // The gentlest setting first. If that fits, no search is needed and the user
   // keeps the best quality available — the common case for a file that is only
   // slightly over.
@@ -100,6 +124,8 @@ export async function searchForTarget(
   // Something between them fits. Narrow toward the gentlest one that does.
   let lo = 0; // known not to fit
   let hi = 1; // known to fit
+  // `probes` already counts the two bracketing passes above, so the loop gets
+  // whatever is left of the budget rather than a fresh allowance of it.
   while (probes < maxProbes && hi - lo > tolerance) {
     const mid = (lo + hi) / 2;
     const attempt = await run(mid);

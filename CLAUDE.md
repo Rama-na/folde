@@ -1,8 +1,8 @@
-# Snug — engineering rules
+# ReadyPDF — engineering rules
 
 ## What this is
 
-Snug has one job: **you name a size limit, Snug guarantees the files land under it.**
+ReadyPDF has one job: **you name a size limit, ReadyPDF guarantees the files land under it.**
 
 Two shapes of the same job:
 
@@ -32,7 +32,7 @@ These are the product. Breaking one is a bug even if the UI looks fine.
   Use `lib/bytes.ts`; never compare raw file sizes against a mail cap directly.
 - **Never produce split-volume archives.** No `.zip.001` / `.zip.002`. Sequential split
   archives are a malware-delivery signature and get quarantined by Gmail's outbound
-  filter and most corporate inbound filters. Every output Snug produces opens on its own.
+  filter and most corporate inbound filters. Every output ReadyPDF produces opens on its own.
 - **Dividing a document is a delivery move, not a feature.** A PDF that cannot be sent
   even alone once the ladder has run out is divided by page into whole PDFs that each
   fit — automatically, measured, and only for mail. There is no page-picking UI and
@@ -59,7 +59,7 @@ These are the product. Breaking one is a bug even if the UI looks fine.
 ## Privacy
 
 - Browser-side by default. Nothing leaves the device unless the user chose a feature
-  that requires it (sending via Snug, share links, or a file too large for device RAM).
+  that requires it (sending via ReadyPDF, share links, or a file too large for device RAM).
 - **Never upload document contents without the UI saying so, in that moment.** Not in a
   privacy policy — on the screen, before it happens.
 - No account required to do the work.
@@ -73,7 +73,7 @@ These are the product. Breaking one is a bug even if the UI looks fine.
   responsive with 40+ files queued.
 - `lib/presets.ts` is the single source of truth for every size target. Do not hardcode
   a byte number anywhere else.
-- `lib/brand.ts` holds the product name. Do not type "Snug" into copy.
+- `lib/brand.ts` holds the product name. Do not type "ReadyPDF" into copy.
 - Licensing: this project uses **permissively licensed** libraries only (`pdf-lib` MIT,
   `pdfjs-dist` Apache-2.0, `fflate` MIT, `sharp` Apache-2.0). Ghostscript and MuPDF are
   AGPL — do not add either, in any form including WASM, without an explicit decision

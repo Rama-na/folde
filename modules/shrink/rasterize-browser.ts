@@ -1,5 +1,6 @@
 import { PDFDocument } from "pdf-lib";
 import { throwIfAborted } from "./types";
+import type { PageProgress } from "./index";
 
 /**
  * Rung 3 — render every page to an image and rebuild the document around them.
@@ -22,6 +23,7 @@ export async function rasterizePdf(
   dpi: number,
   quality: number,
   signal?: AbortSignal,
+  onPage?: PageProgress,
 ): Promise<Uint8Array> {
   const pdfjs = await loadPdfJs();
   const worker = getPdfWorker(pdfjs);
@@ -40,6 +42,10 @@ export async function rasterizePdf(
 
     for (let n = 1; n <= doc.numPages; n++) {
       throwIfAborted(signal);
+      // Said before the page is rendered rather than after, so the number on screen
+      // is the page being worked on rather than the last one finished. On a long
+      // document this is the difference between a wait and a hang.
+      onPage?.(n, doc.numPages);
 
       const page = await doc.getPage(n);
       // The page keeps its original dimensions in points; only the pixel density

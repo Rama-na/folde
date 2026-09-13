@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { shrinkFile } from "@/modules/shrink";
+import { shrinkFile, type PageProgress } from "@/modules/shrink";
 import { browserCodec } from "@/modules/shrink/codec-browser";
 import { rasterizePdf } from "@/modules/shrink/rasterize-browser";
 import { Cancelled } from "@/modules/shrink/types";
@@ -93,7 +93,22 @@ async function runJob(
         const result = await shrinkFile(
           source,
           target,
-          { codec: browserCodec, rasterizer: rasterizePdf },
+          {
+            codec: browserCodec,
+            rasterizer: rasterizePdf,
+            // Rung 3 is the one rung slow enough to look broken. A 120-page
+            // statement takes a minute to render even once, and without this the
+            // status line sits on a filename for that whole minute with nothing
+            // to say whether it is working or hung.
+            onPage: (page, of) =>
+              post({
+                type: "progress",
+                jobId,
+                done: index,
+                total: files.length,
+                current: `${file.name} — converting page ${page} of ${of}`,
+              }),
+          },
           controller.signal,
         );
 
@@ -104,7 +119,22 @@ async function runJob(
           splitBelow !== null &&
           result.kind === "pdf" &&
           result.size > splitBelow &&
-          (await emitPieces(jobId, file, source, result.size, splitBelow, controller.signal))
+          (await emitPieces(
+            jobId,
+            file,
+            source,
+            result.size,
+            splitBelow,
+            controller.signal,
+            (page, of) =>
+              post({
+                type: "progress",
+                jobId,
+                done: index,
+                total: files.length,
+                current: `${file.name} — dividing, page ${page} of ${of}`,
+              }),
+          ))
         ) {
           continue;
         }
@@ -187,11 +217,17 @@ async function emitPieces(
   compressedSize: number,
   target: number,
   signal: AbortSignal,
+  onPage: PageProgress,
 ): Promise<boolean> {
   const divided = await splitToFit(
     source,
     target,
-    { codec: browserCodec, rasterizer: rasterizePdf, compressedSize },
+    {
+      codec: browserCodec,
+      rasterizer: rasterizePdf,
+      compressedSize,
+      onPage,
+    },
     signal,
   );
   if (!divided.split || divided.pieces.length < 2) return false;

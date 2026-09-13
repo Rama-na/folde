@@ -1,8 +1,8 @@
-# Snug
+# ReadyPDF
 
 **Your files, under the limit.**
 
-You name a size limit. Snug guarantees the files land under it.
+You name a size limit. ReadyPDF guarantees the files land under it.
 
 Two shapes of the same job:
 
@@ -28,7 +28,7 @@ weighs 6.4 MB. `lib/bytes.ts` budgets against what the server actually measures.
 malware-delivery signature: Gmail's outbound filter and most corporate inbound
 filters delay or quarantine them, and a missing part is discovered only when
 reassembly fails. Plenty of government and enterprise systems reject `.zip` outright.
-So Snug never produces split volumes, and attaches files loosely by default. Every
+So ReadyPDF never produces split volumes, and attaches files loosely by default. Every
 batch is complete and openable on its own.
 
 ## What it takes
@@ -102,7 +102,7 @@ npm run dev
 
 ## Deploying it
 
-Snug has no server: no API routes, nothing reads the environment at runtime, and
+ReadyPDF has no server: no API routes, nothing reads the environment at runtime, and
 all the work happens in the browser. `npm run build:static` produces a 3.5 MB
 folder of plain files that belongs on a CDN rather than in a container.
 
