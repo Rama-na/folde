@@ -121,9 +121,19 @@ npm run test:all     # all of it, both build targets
 ```
 
 `test:browser` ends with the case that started the project: 42 mixed files, 40 MB, at
-390px phone width. It currently reaches 9.9 MB in three emails — 4.9, 4.9 and 3.6 MB
-on the wire — in about 27 seconds. The pile is generated on first run
+390px phone width. It currently reaches 10.2 MB in three emails — 4.9, 4.8 and 4.3 MB
+on the wire — in about 20 seconds. The pile is generated on first run
 (`npm run fixtures:pile`) and gitignored.
+
+### What a probe costs
+
+Both search rungs are bounded, and both bounds were written after a phone made the
+point. Rung 3 budgets **page renders** (`MAX_PAGE_RENDERS`); rung 2 budgets
+**re-encoded megapixels** (`MAX_REENCODE_MEGAPIXELS`), because its probes are not the
+same size as each other. The narrowing interpolates from the sizes it has already
+measured rather than bisecting blindly, which is the difference between two probes
+and six on a long scan. A 20 MB forty-page document went from 469 megapixels of
+re-encoding to 71.
 
 `npm run test:browser` is not optional extra coverage. The Node suite says nothing
 about the OffscreenCanvas codec, the Web Worker, or pdf.js — and all three have

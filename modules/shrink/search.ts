@@ -22,6 +22,33 @@ export interface SearchOptions {
   /** Stop once the effort bracket is this narrow — further probes buy nothing. */
   tolerance?: number;
   /**
+   * Where to look first, when the caller has an informed guess.
+   *
+   * Only a guide for where to probe, never a result: what comes back is still the
+   * best candidate actually encoded and actually measured. The narrowing below is a
+   * bisection, and a bisection that starts at the middle spends its first two or
+   * three probes travelling to where a decent estimate could have put it in one. On
+   * a rung where every probe re-encodes every image in the document, those probes
+   * are most of the time somebody spends waiting.
+   */
+  seed?: number;
+
+  /**
+   * Asked before each narrowing probe. True keeps the best candidate found so far
+   * rather than spending another pass.
+   *
+   * A probe count cannot express this on its own, because probes on some rungs are
+   * not the same size as each other: rung 2's first pass may be skipped entirely and
+   * its third may re-encode forty megapixels. What matters is the total spent, and
+   * only the caller knows what a pass of its own actually cost.
+   *
+   * The two bracketing probes are never gated — without them there is no answer at
+   * all, only a refusal. This governs refinement, which is where an expensive
+   * document goes to spend thirty seconds buying a difference nobody can see.
+   */
+  budgetSpent?: () => boolean;
+
+  /**
    * Accept immediately once an attempt lands at least this fraction of the target.
    *
    * Chasing the last few percent of a size budget costs several more encode passes
@@ -124,10 +151,20 @@ export async function searchForTarget(
   // Something between them fits. Narrow toward the gentlest one that does.
   let lo = 0; // known not to fit
   let hi = 1; // known to fit
+  let loSize = gentlest.size; // too big
+  let hiSize = harshest.size; // fits
+
+  // The caller's guess gets the first look, if it has one.
+  let next =
+    options.seed === undefined
+      ? between(lo, hi, loSize, hiSize, target)
+      : Math.min(1 - tolerance, Math.max(tolerance, options.seed));
+
   // `probes` already counts the two bracketing passes above, so the loop gets
   // whatever is left of the budget rather than a fresh allowance of it.
   while (probes < maxProbes && hi - lo > tolerance) {
-    const mid = (lo + hi) / 2;
+    if (options.budgetSpent?.()) break;
+    const mid = next;
     const attempt = await run(mid);
     if (attempt.size <= target) {
       // Close enough to the budget that further probing is wasted time.
@@ -135,9 +172,12 @@ export async function searchForTarget(
         return { best: attempt, closest: closest ?? attempt, probes };
       }
       hi = mid;
+      hiSize = attempt.size;
     } else {
       lo = mid;
+      loSize = attempt.size;
     }
+    next = between(lo, hi, loSize, hiSize, target);
   }
 
   return {
@@ -145,4 +185,35 @@ export async function searchForTarget(
     closest: closest ?? harshest,
     probes,
   };
+}
+
+/**
+ * Where to look next, from what the probes actually measured.
+ *
+ * The bracket has a measured size at each end, one over the target and one under, so
+ * the straight line between them says roughly where it crosses. That is a secant
+ * step, and on this curve it lands close enough that one or two more probes finish
+ * the job.
+ *
+ * A plain bisection ignores the sizes entirely and walks the interval by halves.
+ * On a 14 MB scan that was five narrowing passes, each re-encoding every image in
+ * the document, and the last three of them moved the answer from 1562 pixels wide to
+ * 1413 and back out to 1487 — a five per cent change in resolution, invisible at
+ * reading size, bought with seventy-five megapixels of somebody's phone.
+ *
+ * Clamped well inside the bracket, because the size curve is only broadly monotonic:
+ * a JPEG encoder that wobbles by a percent can otherwise push the next probe onto an
+ * endpoint that has already been measured, and the search stops making progress.
+ */
+function between(
+  lo: number,
+  hi: number,
+  loSize: number,
+  hiSize: number,
+  target: number,
+): number {
+  const span = loSize - hiSize;
+  const fraction = span > 0 ? (loSize - target) / span : 0.5;
+  const safe = Math.min(0.8, Math.max(0.2, fraction));
+  return lo + (hi - lo) * safe;
 }

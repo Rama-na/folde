@@ -67,6 +67,7 @@ async function runJob(
 
       const source = new Uint8Array(file.bytes);
       const target = targets.get(file.id) ?? null;
+      let lastStage = "";
 
       // No target means this file is already small enough to carry as it is.
       // Handing it straight back is not an optimisation, it is the rule: a file
@@ -96,18 +97,25 @@ async function runJob(
           {
             codec: browserCodec,
             rasterizer: rasterizePdf,
-            // Rung 3 is the one rung slow enough to look broken. A 120-page
-            // statement takes a minute to render even once, and without this the
-            // status line sits on a filename for that whole minute with nothing
-            // to say whether it is working or hung.
-            onPage: (page, of) =>
+            // Both slow rungs report through this. Without it the status line sits
+            // on a filename with the bar at zero for as long as the file takes,
+            // which is indistinguishable from a crash — and is what "it kept
+            // loading" turned out to mean.
+            //
+            // Posted only when the text actually changes: rung 2 calls this once per
+            // image per probe, and a message per call would be hundreds of them.
+            onStage: (stage) => {
+              const line = `${file.name} — ${stage}`;
+              if (line === lastStage) return;
+              lastStage = line;
               post({
                 type: "progress",
                 jobId,
                 done: index,
                 total: files.length,
-                current: `${file.name} — converting page ${page} of ${of}`,
-              }),
+                current: line,
+              });
+            },
           },
           controller.signal,
         );

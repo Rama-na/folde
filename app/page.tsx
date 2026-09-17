@@ -56,15 +56,21 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const read = await Promise.all(
-        files.map(async (f) => ({
-          id: f.id,
-          name: f.name,
-          bytes: new Uint8Array(await f.file.arrayBuffer()),
-        })),
-      );
-      if (cancelled) return;
-      const facts = await Promise.all(read.map(analyse));
+      // One at a time, and each one released before the next is read. Reading them
+      // all with Promise.all held every byte of every file in memory at once purely
+      // to count pages — forty-two files is forty-two megabytes of nothing, on the
+      // device least able to spare it, before the user has even chosen a limit.
+      const facts: AnalysedFile[] = [];
+      for (const f of files) {
+        if (cancelled) return;
+        facts.push(
+          await analyse({
+            id: f.id,
+            name: f.name,
+            bytes: new Uint8Array(await f.file.arrayBuffer()),
+          }),
+        );
+      }
       if (!cancelled) setAnalysed(facts);
     })();
     return () => {
