@@ -101,7 +101,11 @@ async function run(page: Page): Promise<void> {
   await page.goto(ORIGIN);
 
   await upload(page, ["scan-300dpi.pdf"]);
-  await page.getByText("1 file", { exact: false }).first().waitFor();
+  await page
+    .getByText("1 file", { exact: false })
+    .filter({ visible: true })
+    .first()
+    .waitFor();
   await assertContrast(page, "intake");
 
   await page.getByRole("tab", { name: "Uploading to a portal" }).click();
@@ -201,7 +205,12 @@ async function run(page: Page): Promise<void> {
   // Confirm the page is holding every byte we handed it. Without this, files
   // lost on the way in read as "everything already fits" and the suite passes
   // while testing nothing.
-  const listed = (await page.locator("h2", { hasText: "files" }).first().textContent()) ?? "";
+  const listed =
+    (await page
+      .locator("h2", { hasText: "files" })
+      .filter({ visible: true })
+      .first()
+      .textContent()) ?? "";
   console.log(`  page holds: ${listed.trim()}`);
   check(
     `all ${pile.length} files reached the page`,
@@ -217,11 +226,11 @@ async function run(page: Page): Promise<void> {
   await page.getByRole("tab", { name: "Sending by email" }).click();
   await page.getByRole("button", { name: /^5 MB/ }).click();
 
-  const plan = await page
-    .locator("section", { hasText: "Make it fit" })
-    .first()
-    .textContent();
-  console.log(`  plan: "${(plan ?? "").replace("Make it fit", "").trim()}"`);
+  // The plan announces itself as a status message, which is both the right markup
+  // and the stable way to find it. It used to be located by the button inside it;
+  // the button is now the action bar, which on a phone is not inside anything.
+  const plan = await page.getByRole("status").first().textContent();
+  console.log(`  plan: "${(plan ?? "").trim()}"`);
   check(
     "a pile far over the cap is not mistaken for one that already fits",
     !/already fits in one email/i.test(plan ?? ""),
@@ -272,10 +281,7 @@ async function run(page: Page): Promise<void> {
   await upload(page, ["tiny.pdf"]);
   await page.getByRole("tab", { name: "Uploading to a portal" }).click();
   await page.getByRole("button", { name: /200 KB/ }).click();
-  const note = await page
-    .locator("section", { hasText: "Make it fit" })
-    .first()
-    .textContent();
+  const note = await page.getByRole("status").first().textContent();
   check(
     "the interface says it will leave it alone",
     /already smaller is left untouched/i.test(note ?? ""),
@@ -429,7 +435,11 @@ async function runPile(browser: Browser): Promise<void> {
     );
 
     const listed =
-      (await page.locator("h2", { hasText: "files" }).first().textContent()) ?? "";
+      (await page
+        .locator("h2", { hasText: "files" })
+        .filter({ visible: true })
+        .first()
+        .textContent()) ?? "";
     console.log(
       `  ${names.length} files, ${(total / 1_000_000).toFixed(1)} MB — page holds: ${listed.trim()}`,
     );
@@ -951,7 +961,11 @@ async function runLanding(browser: Browser): Promise<void> {
 
     await page.goto(ORIGIN);
     await upload(page, ["text.pdf"]);
-    await page.getByText("1 file", { exact: false }).first().waitFor();
+    await page
+    .getByText("1 file", { exact: false })
+    .filter({ visible: true })
+    .first()
+    .waitFor();
     check(
       "and all of it gets out of the way once there are files to work on",
       (await page.getByText("The usual tools are here").count()) === 0,
@@ -1372,6 +1386,152 @@ async function runTools(browser: Browser): Promise<void> {
   }
 }
 
+/**
+ * The phone shell.
+ *
+ * The complaint that prompted it was "it kept loading", and the fix for that was the
+ * compression work. The complaint underneath it was that a phone got the desktop
+ * page stacked, with the button that does the work wherever the column happened to
+ * put it — on the screenshot that started this, below the fold.
+ *
+ * So the thing to guard is reachability, and it is guarded by measuring rather than
+ * by looking: the action is on screen without scrolling, and nothing is trapped
+ * underneath it at the bottom of the page. A fixed bar that covers the last control
+ * is a worse bug than the one it fixes, because it cannot be scrolled away from.
+ */
+async function runPhoneShell(browser: Browser): Promise<void> {
+  console.log("\nbrowser: the phone shell");
+
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+
+  try {
+    await page.goto(ORIGIN);
+    await upload(page, ["scan-300dpi.pdf", "text.pdf"]);
+    await page.getByRole("tab", { name: "Sending by email" }).click();
+    await page.getByRole("button", { name: /^5 MB/ }).click();
+    await settle(page);
+
+    const viewport = page.viewportSize()!;
+    const bar = await page.getByRole("button", { name: "Make it fit" }).boundingBox();
+    check(
+      "the action is on screen without scrolling for it",
+      bar !== null && bar.y >= 0 && bar.y + bar.height <= viewport.height + 1,
+      bar ? `y=${Math.round(bar.y)} h=${Math.round(bar.height)} of ${viewport.height}` : "not found",
+    );
+    check(
+      "and it is in the bottom third, where a thumb is",
+      bar !== null && bar.y > viewport.height * 0.6,
+      bar ? `y=${Math.round(bar.y)}` : "not found",
+    );
+
+    // The step rail is only worth having if it is telling the truth.
+    const rail = (await page.getByText(/^Step \d of 3/).textContent()) ?? "";
+    console.log(`  rail says: ${rail.trim()}`);
+    check("the rail names the step", /Step 2 of 3/.test(rail), rail);
+
+    // The fixed bar must not trap anything at the end of the page.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await settle(page);
+    const trapped = (await page.evaluate(`(() => {
+      var bars = document.querySelectorAll("button");
+      var bar = null;
+      for (var i = 0; i < bars.length; i++) {
+        if ((bars[i].textContent || "").indexOf("Make it fit") >= 0) { bar = bars[i]; break; }
+      }
+      if (!bar) return ["no action bar"];
+      var cover = bar.getBoundingClientRect();
+      var out = [];
+      var nodes = document.querySelectorAll("button, input, select, a");
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        if (el === bar || bar.contains(el) || el.contains(bar)) continue;
+        var r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        // Overlapping the bar, and not scrollable out from under it because we are
+        // already at the bottom of the document.
+        if (r.top < cover.bottom && r.bottom > cover.top && r.left < cover.right && r.right > cover.left) {
+          out.push((el.textContent || el.tagName).trim().slice(0, 24));
+        }
+      }
+      return out;
+    })()`)) as string[];
+    check(
+      "nothing is trapped under the bar at the end of the page",
+      trapped.length === 0,
+      trapped.join(", "),
+    );
+
+    // While it works, the rail must not claim it has finished.
+    await page.getByRole("button", { name: "Make it fit" }).click();
+    await page.waitForTimeout(700);
+    const working = (await page.getByText(/^Step \d of 3/).textContent()) ?? "";
+    console.log(`  rail while working: ${working.trim()}`);
+    check(
+      "the rail does not say Done while it is still going",
+      !/Done/.test(working),
+      working,
+    );
+
+    await page
+      .getByRole("heading", { name: /email(s)? to send/ })
+      .waitFor({ timeout: 180_000 });
+    await settle(page);
+    const finished = (await page.getByText(/^Step \d of 3/).textContent()) ?? "";
+    check("and does say Done once it is", /Done/.test(finished), finished);
+    await assertClean(page, "the phone shell");
+  } finally {
+    await context.close();
+  }
+
+  console.log("\nbrowser: the legal pages");
+  const legal = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page2 = await legal.newPage();
+  page2.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+  try {
+    for (const [path, heading] of [
+      ["/legal/privacy", "Privacy"],
+      ["/legal/terms", "Terms of use"],
+      ["/legal/refunds", "Refunds and cancellation"],
+    ] as const) {
+      await page2.goto(`${ORIGIN}${path}`);
+      check(
+        `${path} renders`,
+        await page2.getByRole("heading", { name: heading, level: 1 }).isVisible(),
+      );
+      const over = await page2.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      check(`${path} does not overflow at 390px`, over <= 0, `${over}px over`);
+    }
+
+    // A payment provider will not approve an account whose refund policy cannot be
+    // reached from the site, and nor should a cautious first customer.
+    await page2.goto(ORIGIN);
+    await page2.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await settle(page2);
+    for (const label of ["Privacy", "Terms", "Refunds"]) {
+      check(
+        `${label} is reachable from the page itself`,
+        (await page2.getByRole("link", { name: label }).count()) > 0,
+      );
+    }
+  } finally {
+    await legal.close();
+  }
+}
+
 async function main(): Promise<void> {
   assembleStandalone();
 
@@ -1409,6 +1569,7 @@ async function main(): Promise<void> {
     await runZip(browser);
     await runSplit(browser);
     await runTools(browser);
+    await runPhoneShell(browser);
     await runPile(browser);
   } finally {
     await browser?.close();

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { BRAND } from "@/lib/brand";
 import "./globals.css";
@@ -33,6 +33,28 @@ export const metadata: Metadata = {
   description:
     "Name a size limit and get files that land under it — for portal uploads that " +
     "reject anything over 200 KB, and for email that bounces attachments.",
+};
+
+/**
+ * The two lines that decide whether a phone treats this as a page or as an app.
+ *
+ * `viewportFit: "cover"` lets the layout reach under the notch and the home
+ * indicator, which is what makes `env(safe-area-inset-bottom)` report anything at
+ * all — without it the action bar's padding is zero and the button sits in the
+ * swipe area, where every third tap is a gesture instead.
+ *
+ * `themeColor` paints the browser's own chrome to match the canvas, so the address
+ * bar stops being a grey stripe above somebody's document. It has to be declared per
+ * scheme: one value means a light bar over a dark page for half the audience.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f6f8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0e14" },
+  ],
 };
 
 export default function RootLayout({

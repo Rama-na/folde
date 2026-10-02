@@ -92,6 +92,8 @@ Concretely, what is allowed to move and why:
 | Landing sizes falling | transformation | Each file pushed only as far as needed |
 | Landing parts closing around rows | sending | The boundary of one message |
 | The neon pass over the measured claim | transformation | A reading being taken — a scanner head crossing a page, lighting what it has read |
+| The phone action bar rising on arrival | feedback | It is a new control appearing under the thumb; 24px and 250ms, once |
+| The step rail filling | feedback | The only answer on screen to "how much of this is left" |
 
 Everything else is a 150ms CSS transition on a state change.
 
@@ -154,5 +156,20 @@ never constructed under `reduced`.
 - **The drop zone is the first thing on the page.** The case for the product lives
   below it and disappears entirely the moment a file is loaded — somebody arriving
   twenty minutes before a portal closes should not have to scroll past an argument.
+- **A phone gets one step at a time and one action, pinned.** Most of this product is
+  used in a phone browser, and a phone was getting the desktop page stacked: drop
+  zone, tabs, four limit cards, a custom input, a plan, a progress card and a file
+  list, all the same weight, with the button that does the work wherever the column
+  put it. Steps are *derived* from what has happened — files or no files, working or
+  not, finished or not — so there is no wizard to get out of step with reality.
+  Desktop keeps the two-column surface; it has the room and the thumb is not a
+  constraint.
+- **One element, two positions — never two elements.** The action bar is fixed on a
+  phone and inline on desktop, and it is the same button. Two buttons with one name
+  in one document is ambiguous for a screen reader and for anything else reading the
+  page, and it is a second thing to keep in sync.
+- **A fixed bar must never trap a control.** Enforced in `test:browser`: at the very
+  bottom of the page, where nothing can be scrolled out from under it, no other
+  control may overlap the bar.
 - No row of three equal cards. Where a section has parts, they are asymmetric,
   because they are asymmetric in the product.

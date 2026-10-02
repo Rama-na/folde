@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { motion } from "motion/react";
-import { ArrowRight, CircleNotch } from "@phosphor-icons/react";
+import { CircleNotch } from "@phosphor-icons/react";
 import { BRAND } from "@/lib/brand";
 import { formatBytes } from "@/lib/bytes";
 import type { Preset } from "@/lib/presets";
 import { useShrinkJob } from "@/lib/use-shrink-job";
 import { useMotionBudget } from "@/lib/use-motion-budget";
+import { ActionBar, FileSummary, StepRail, type Step } from "@/components/app/Shell";
 import { Dropzone } from "@/components/Dropzone";
 import { Landing } from "@/components/landing/Landing";
 import { LockedNotice, ToolOffers } from "@/components/tools/ToolOffers";
@@ -27,6 +29,8 @@ export default function Home() {
   const [files, setFiles] = useState<Held[]>([]);
   const [preset, setPreset] = useState<Preset | null>(null);
   const [tool, setTool] = useState<Exclude<ToolId, "fit"> | null>(null);
+  /** Phone only: the file list is a summary until somebody asks for the list. */
+  const [listOpen, setListOpen] = useState(false);
   const [analysed, setAnalysed] = useState<AnalysedFile[]>([]);
   const job = useShrinkJob();
   const budget = useMotionBudget();
@@ -152,20 +156,49 @@ export default function Home() {
 
   const finished = !job.running && job.outcomes.length > 0;
 
+  /*
+   * Which step a phone is on, read off what has happened rather than driven by a
+   * wizard.
+   *
+   * There is no "next" button that only advances a counter, and nothing to get out
+   * of step with reality: files or no files, working or not, finished or not. The
+   * one consequence worth knowing is that dropping a file moves you on immediately,
+   * which is also what somebody who just dropped a file wants.
+   */
+  const step: Step = job.running
+    ? "working"
+    : finished
+      ? "done"
+      : files.length === 0
+        ? "files"
+        : "limit";
+
+  /** Shown on a phone only when it is this step's turn; desktop shows everything. */
+  const onStep = (...steps: Step[]) =>
+    steps.includes(step) ? "" : "hidden lg:block";
+
   // Nothing loaded and nothing running: the only moment the case for the product is
   // worth anybody's screen. The instant a file arrives this is a tool, and a tool
   // with a sales pitch stapled underneath is a worse tool.
   const idle = files.length === 0 && !job.running && !finished;
 
   return (
-    <div className="min-h-dvh">
-      <main className="mx-auto max-w-5xl px-5 py-10 sm:py-14">
+    <div className="min-h-dvh pb-28 lg:pb-0">
+      <main className="mx-auto max-w-5xl px-5 py-6 sm:py-10 lg:py-14">
         <header className="flex items-baseline gap-3">
           <span className="text-xl font-semibold tracking-tight">
             {BRAND.name}
           </span>
-          <span className="text-sm text-ink-soft">{BRAND.tagline}</span>
+          <span className="hidden text-sm text-ink-soft sm:inline">
+            {BRAND.tagline}
+          </span>
         </header>
+
+        {!idle && tool === null && (
+          <div className="mt-5">
+            <StepRail step={step} />
+          </div>
+        )}
 
         {finished && preset ? (
           <div className="mx-auto mt-8 max-w-2xl">
@@ -211,15 +244,46 @@ export default function Home() {
                 </div>
               )}
 
+              {tool === null && files.length > 0 && (
+                <FileSummary
+                  count={files.length}
+                  bytes={formatBytes(total)}
+                  onEdit={() => setListOpen((v) => !v)}
+                />
+              )}
+
               {tool === null && (
-                <Dropzone onFiles={addFiles} disabled={job.running} />
+                <div className={files.length === 0 || listOpen ? "" : "hidden lg:block"}>
+                  <Dropzone onFiles={addFiles} disabled={job.running} />
+                </div>
+              )}
+
+              {/* The full list, on a phone, only when it has been asked for. */}
+              {tool === null && listOpen && files.length > 0 && (
+                <div className="lg:hidden">
+                  <FileList
+                    files={files}
+                    total={total}
+                    onRemove={
+                      job.running
+                        ? undefined
+                        : (id) => setFiles((c) => c.filter((f) => f.id !== id))
+                    }
+                    onClear={job.running ? undefined : () => setFiles([])}
+                  />
+                </div>
               )}
 
               {tool === null && files.length > 0 && (
-                <>
+                <div className={onStep("limit")}>
                   <LockedNotice files={analysed} onChoose={chooseTool} />
+                </div>
+              )}
+
+              {tool === null && files.length > 0 && (
+                <div className={onStep("limit")}>
                   <TargetPicker selected={preset} onSelect={setPreset} />
-                </>
+                </div>
               )}
 
               {strategy && !job.running && (
@@ -227,27 +291,26 @@ export default function Home() {
                   initial={budget === "reduced" ? false : { opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                  className="rounded-[12px] border border-accent/30 bg-accent-wash p-4"
+                  // A status message, and marked as one: it appears in response to
+                  // picking a limit and says what is about to happen to these
+                  // particular files. A screen reader should announce that when it
+                  // changes, which `role="status"` is exactly for.
+                  role="status"
+                  className={`rounded-[12px] border border-accent/30 bg-accent-wash p-4 ${onStep("limit")}`}
                 >
                   <p className="text-sm leading-relaxed">{strategy.reason}</p>
-                  <button
-                    type="button"
-                    onClick={start}
-                    className="mt-4 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[12px] bg-accent px-6 font-medium text-accent-ink transition-transform duration-150 hover:opacity-90 active:scale-[0.98] sm:w-auto"
-                  >
-                    Make it fit
-                    <ArrowRight size={16} weight="bold" aria-hidden />
-                  </button>
                 </motion.section>
               )}
 
               {job.running && job.progress && (
-                <Progress
-                  done={job.progress.done}
-                  total={job.progress.total}
-                  current={job.progress.current}
-                  onCancel={job.cancel}
-                />
+                <div className="flex min-h-[55svh] flex-col justify-center lg:block lg:min-h-0">
+                  <Progress
+                    done={job.progress.done}
+                    total={job.progress.total}
+                    current={job.progress.current}
+                    onCancel={job.cancel}
+                  />
+                </div>
               )}
 
               {job.error && (
@@ -262,12 +325,22 @@ export default function Home() {
                 list is short because everything that does not apply to these
                 particular files has already been thrown away.
               */}
+              {tool === null && strategy && !job.running && (
+                <ActionBar
+                  label="Make it fit"
+                  detail={`${files.length} file${files.length === 1 ? "" : "s"} · ${formatBytes(total)} · under ${preset ? formatBytes(preset.bytes) : ""}`}
+                  onPress={start}
+                />
+              )}
+
               {tool === null && !job.running && analysed.length > 0 && (
-                <ToolOffers files={analysed} onChoose={chooseTool} />
+                <div className={onStep("limit")}>
+                  <ToolOffers files={analysed} onChoose={chooseTool} />
+                </div>
               )}
             </div>
 
-            <aside className="lg:sticky lg:top-14 lg:self-start">
+            <aside className="hidden lg:sticky lg:top-14 lg:block lg:self-start">
               {files.length > 0 ? (
                 <FileList
                   files={files}
@@ -300,6 +373,21 @@ export default function Home() {
             uploaded.
           </span>
         </div>
+        <nav className="flex flex-wrap gap-x-5">
+          {[
+            ["/legal/privacy", "Privacy"],
+            ["/legal/terms", "Terms"],
+            ["/legal/refunds", "Refunds"],
+          ].map(([href, label]) => (
+            <Link
+              key={href}
+              href={href}
+              className="inline-flex min-h-[44px] items-center transition-colors duration-150 hover:text-accent"
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
       </footer>
     </div>
   );
