@@ -8,3 +8,8 @@ next-env.d.ts
 public/pdf.worker.min.mjs
 tests/fixtures/pile/
 out
+
+# Throwaway scripts used to take a screenshot or measure something once. They are
+# written next to the real ones because tsx resolves the project's imports from
+# there, and one of them reached a commit before this rule existed.
+scripts/_*.ts

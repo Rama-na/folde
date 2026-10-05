@@ -92,6 +92,11 @@ Concretely, what is allowed to move and why:
 | Landing sizes falling | transformation | Each file pushed only as far as needed |
 | Landing parts closing around rows | sending | The boundary of one message |
 | The neon pass over the measured claim | transformation | A reading being taken — a scanner head crossing a page, lighting what it has read |
+| The phone action bar rising on arrival | feedback | It is a new control appearing under the thumb; 24px and 250ms, once |
+| The step rail filling | feedback | The only answer on screen to "how much of this is left" |
+| The chosen limit sliding between tiles | organisation | A mark that travels says "this instead of that"; two borders fading says nothing |
+| The tab underline sliding | organisation | Same move, same reason, one level up |
+| The limits fading when the tab changes | transformation | Four numbers changing in place reads as four typos, not as a different question |
 
 Everything else is a 150ms CSS transition on a state change.
 
@@ -154,5 +159,64 @@ never constructed under `reduced`.
 - **The drop zone is the first thing on the page.** The case for the product lives
   below it and disappears entirely the moment a file is loaded — somebody arriving
   twenty minutes before a portal closes should not have to scroll past an argument.
+- **A phone gets one step at a time and one action, pinned.** Most of this product is
+  used in a phone browser, and a phone was getting the desktop page stacked: drop
+  zone, tabs, four limit cards, a custom input, a plan, a progress card and a file
+  list, all the same weight, with the button that does the work wherever the column
+  put it. Steps are *derived* from what has happened — files or no files, working or
+  not, finished or not — so there is no wizard to get out of step with reality.
+  Desktop keeps the two-column surface; it has the room and the thumb is not a
+  constraint.
+- **One element, two positions — never two elements.** The action bar is fixed on a
+  phone and inline on desktop, and it is the same button. Two buttons with one name
+  in one document is ambiguous for a screen reader and for anything else reading the
+  page, and it is a second thing to keep in sync.
 - No row of three equal cards. Where a section has parts, they are asymmetric,
   because they are asymmetric in the product.
+- **A card is for hierarchy, not for grouping.** The target picker was four bordered
+  boxes stacked down the screen — a tab bar, a paragraph, four identical 110px cards
+  and a custom input — every one of them the same white rectangle on a near-white
+  page, so nothing looked more important than anything else. It is one panel now,
+  divided by hairlines, and the limits are 64px tiles. A list of four equivalent
+  choices has no hierarchy, so it gets no boxes.
+- **One thing per screen is allowed to be the point.** On the results screen that is
+  the measured size, at `2.75rem`. The size it started at is context and sits above
+  it at body size with the arrow. Before and after at the same scale made the arrow
+  the centre of the composition, and at 390px wrapped it to the end of the first
+  line, pointing at nothing.
+- **A fixed bar must never trap a control.** Enforced in `test:browser`: at the very
+  bottom of the page, where nothing can be scrolled out from under it, no other
+  control may overlap the bar.
+- **A fixed bar is opaque.** It was `bg-canvas/85` with a backdrop blur, and in a
+  screenshot the tool list underneath showed through as ghost text directly behind
+  "Make it fit". Frosted glass only reads as glass when there is something worth
+  seeing through it. Solid bar, eight pixels of gradient above it, so the column
+  visibly runs under rather than being smeared into it.
+- **A fixed bar has no bottom margin.** `space-y-*` in Tailwind v4 is a
+  `margin-block-end` on every child but the last, and a bottom margin on a
+  bottom-anchored fixed element lifts it clear of the screen edge. The bar sat 24px
+  high for a whole session with `position: fixed; bottom: 0` computing exactly as
+  written. `test:browser` now asserts the bar is flush.
+- **Say what the button will do, next to the button.** The plan sentence — "2 emails
+  instead of 3" — used to be a card further up the column, which on a phone put it
+  underneath the fixed bar at the exact moment it appeared. It is the bar's own
+  caption now, and still a `role="status"`, because it is a description of that
+  button rather than a fact about the page.
+
+## Naming what does not exist yet
+
+Three features are coming that change this page: sending on the user's behalf,
+PDF→Word, and a share link. The page has to make sense with them in it, or it gets
+redesigned twice.
+
+- **They are named in exactly two places**, and both are places somebody is already
+  thinking about them: `components/Roadmap.tsx`, last in the column, under everything
+  that works; and the note after the batches on the results screen, where somebody
+  has just been told to attach three emails by hand.
+- **Statements, never controls.** CLAUDE.md forbids placeholder buttons and it is
+  right to — a button that does nothing teaches people the interface lies.
+- **Not in the target picker.** Two things were tried there and taken back out. A
+  third tab, "Send it for me", left that tab selected at the top while "Make it fit ·
+  under 10 MB" stayed live at the bottom: a destination the product cannot reach is
+  not a destination. A disclosure row under the limits only repeated the roadmap two
+  screens below. The picker answers one question.

@@ -233,6 +233,85 @@ async function main(): Promise<void> {
     );
   }
 
+  /*
+   * What rung 2 is allowed to cost.
+   *
+   * This is the rung that made somebody's phone look broken. A probe here re-encodes
+   * every image in the document, and nothing counted them: a 20 MB forty-page scan
+   * spent 469 megapixels and about half a minute of phone time arriving at an answer
+   * that 71 megapixels reaches.
+   *
+   * Two separate faults, and this guards both. The first was a rounding error with a
+   * bill attached — the "nothing to gain from a full-size re-encode" test asked for
+   * `scale >= 1`, and a 300 DPI scan on A4 measures 300.0004 DPI, so every image in
+   * every such document was re-encoded at 99.9987 per cent of its size to learn
+   * nothing. The second was that the narrowing ignored the sizes it had already
+   * measured and walked the interval by halves instead.
+   */
+  {
+    const counted = async (name: string) => {
+      const source = new Uint8Array(readFileSync(join(FIXTURES, name)));
+      let megapixels = 0;
+      const pointless: string[] = [];
+      const codec = {
+        async transcodeJpeg(bytes: Uint8Array, request: {
+          width: number;
+          height: number;
+          quality: number;
+          sourceType: string;
+        }) {
+          megapixels += (request.width * request.height) / 1e6;
+          const natural = await nodeCodec.probeSize(bytes, request.sourceType);
+          const scale = request.width / natural.width;
+          if (scale >= 0.98 && request.quality >= 0.9) {
+            pointless.push(`${request.width}px at q${request.quality}`);
+          }
+          return nodeCodec.transcodeJpeg(bytes, request);
+        },
+        probeSize: nodeCodec.probeSize,
+      };
+      const result = await shrinkPdf(source, rawAttachmentBudget(5 * MB, 1), {
+        codec,
+        rasterizer: undefined,
+      });
+      return { megapixels, pointless, result };
+    };
+
+    const scan = await counted("scan-300dpi.pdf");
+    const heavy = await counted("scan-heavy.pdf");
+    console.log(
+      `  scan-300dpi ${scan.megapixels.toFixed(0)} MP, scan-heavy ${heavy.megapixels.toFixed(0)} MP re-encoded`,
+    );
+
+    // A re-encode at full size and full quality returns the file it was given. It is
+    // the most expensive thing this rung can do and it is worth nothing.
+    check(
+      "no image is re-encoded at its own size and quality",
+      scan.pointless.length === 0 && heavy.pointless.length === 0,
+      [...scan.pointless, ...heavy.pointless].slice(0, 3).join(", "),
+    );
+
+    // Both were over 90 MP before the narrowing learned to read its own measurements.
+    check(
+      "finding the target costs a fraction of what it used to",
+      scan.megapixels < 60 && heavy.megapixels < 90,
+      `${scan.megapixels.toFixed(0)} and ${heavy.megapixels.toFixed(0)} MP`,
+    );
+
+    // Cheaper is only an improvement if it still lands close to the limit. Spending
+    // half the budget would be a smaller file than asked for, which is quality
+    // given away.
+    const budget = rawAttachmentBudget(5 * MB, 1);
+    check(
+      "and still uses most of the limit it was given",
+      scan.result.ok &&
+        heavy.result.ok &&
+        scan.result.size > budget * 0.85 &&
+        heavy.result.size > budget * 0.85,
+      `${Math.round((scan.result.size / budget) * 100)}% and ${Math.round((heavy.result.size / budget) * 100)}%`,
+    );
+  }
+
   // A damaged file gets a sentence, not a stack trace.
   {
     const corrupt = new Uint8Array(readFileSync(join(FIXTURES, "corrupt.pdf")));

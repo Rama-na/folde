@@ -1,5 +1,5 @@
 import { detectType, isImage, type FileKind } from "@/lib/file-type";
-import { effortPoint } from "./effort";
+import { effortPoint, MAX_DPI, MIN_DPI } from "./effort";
 import { openImageSession } from "./image";
 import { inspectPdf, losslessShrinkPdf } from "./lossless";
 import { openDownsampleSession } from "./pdf-images";
@@ -38,6 +38,15 @@ export interface ShrinkOptions {
   /** Omit to stop the ladder at rung 2 and refuse rather than lose text. */
   rasterizer?: Rasterizer;
   maxProbes?: number;
+  /**
+   * Where the ladder has got to inside a single file.
+   *
+   * Both slow rungs report through this. A 6 MB scan can spend the better part of a
+   * minute on a phone, and until it said something the interface showed a filename,
+   * a bar at zero and nothing else — which is indistinguishable from a crash, and is
+   * what "it kept loading" turned out to mean.
+   */
+  onStage?: (stage: string) => void;
   /** Reported from inside rung 3 only, which is the only rung slow enough to need it. */
   onPage?: PageProgress;
 }
@@ -57,6 +66,48 @@ export interface ShrinkOptions {
  * ones get one careful pass instead of four wasted ones.
  */
 const MAX_PAGE_RENDERS = 220;
+
+/**
+ * How much re-encoding rung 2 may spend looking for a target, in megapixels.
+ *
+ * The number that matters on a phone. A desktop runs this at a hundred megapixels a
+ * second and nobody notices; a mid-range Android in an in-app browser manages closer
+ * to fifteen, so an unbounded search is the difference between four seconds and a
+ * minute of a progress bar that has not moved.
+ *
+ * Measured on the fixture corpus, an unbounded search spent 134 megapixels on a 14 MB
+ * scan, and the last seventy-five of those moved the answer from 1562 pixels wide to
+ * 1413 and back out to 1487. That is a five per cent change in linear resolution,
+ * which is invisible at reading size, bought at half a minute of somebody's time.
+ *
+ * The two bracketing probes are never gated by this; only the narrowing is.
+ */
+const MAX_REENCODE_MEGAPIXELS = 70;
+
+/**
+ * Where rung 2 should look first.
+ *
+ * A JPEG's size rises roughly with its pixel count, so the linear scale that turns a
+ * document of `from` bytes into one of `to` is about the square root of the ratio.
+ * Apply that to the resolution the document is actually at and you have the DPI
+ * worth trying, and from there the effort that asks for it.
+ *
+ * This is an estimate and it is used as an estimate: it decides where the first
+ * probe lands and nothing else. What comes back is encoded and measured like every
+ * other candidate, so a bad guess costs one extra probe rather than a wrong answer.
+ *
+ * It is worth having because the alternative is starting every search at the middle
+ * of the curve. On a 5 MB scan that was four narrowing passes, each re-encoding
+ * every image in the document, to arrive somewhere a square root could have pointed
+ * at immediately.
+ */
+function seedEffort(from: number, to: number, typicalDpi: number): number {
+  if (from <= 0 || to <= 0 || typicalDpi <= 0) return 0.5;
+  const scale = Math.sqrt(to / from);
+  const wantDpi = typicalDpi * scale;
+  const t = (MAX_DPI - wantDpi) / (MAX_DPI - MIN_DPI);
+  return Math.min(1, Math.max(0, t));
+}
 
 function rasterProbeBudget(pages: number): number {
   if (pages <= 0) return 4;
@@ -109,6 +160,7 @@ export async function shrinkPdf(
   throwIfAborted(signal);
 
   // Rung 1. Always run it: later rungs then start from a tidy document.
+  options.onStage?.("tidying it up");
   let lossless: Uint8Array;
   try {
     lossless = await losslessShrinkPdf(source);
@@ -145,7 +197,9 @@ export async function shrinkPdf(
   const session = await openDownsampleSession(lossless, options.codec);
   if (session) {
     const downsampleProbe: Probe = async (effort, sig) => {
-      const bytes = await session.probe(effortPoint(effort), sig);
+      const bytes = await session.probe(effortPoint(effort), sig, (image, of) =>
+        options.onStage?.(`shrinking picture ${image} of ${of}`),
+      );
       // Nothing usefully replaceable at this setting: report the input so the
       // search sees a real, measured size rather than a special case.
       const out = bytes ?? lossless;
@@ -160,7 +214,11 @@ export async function shrinkPdf(
     const downsampled = await searchForTarget(
       downsampleProbe,
       target,
-      { maxProbes: options.maxProbes },
+      {
+        maxProbes: options.maxProbes,
+        seed: seedEffort(lossless.length, target, session.typicalDpi),
+        budgetSpent: () => session.spentMegapixels >= MAX_REENCODE_MEGAPIXELS,
+      },
       signal,
     );
     if (downsampled.best) {
@@ -180,7 +238,10 @@ export async function shrinkPdf(
         point.dpi,
         point.quality,
         sig,
-        options.onPage,
+        (page, of) => {
+          options.onPage?.(page, of);
+          options.onStage?.(`converting page ${page} of ${of}`);
+        },
       );
       return {
         bytes,

@@ -108,7 +108,7 @@ function buildStory(): Story {
 export const MEASURED = {
   files: 42,
   before: 40 * MB,
-  after: 9.9 * MB,
+  after: 10.2 * MB,
   emails: 3,
 } as const;
 

@@ -48,16 +48,40 @@ export interface DownsampleSession {
   /** How many images this rung is willing to touch. Zero means it cannot help. */
   readonly candidates: number;
   /**
+   * The resolution this document is actually at, taken as the median of its images.
+   *
+   * The median rather than the mean: one full-bleed background image at 600 DPI
+   * should not decide where to start searching for a document whose twenty pages of
+   * scanned text are at 200.
+   */
+  readonly typicalDpi: number;
+  /** Megapixels re-encoded so far, across every probe. */
+  readonly spentMegapixels: number;
+  /**
    * Re-encode at the given effort and return the resulting document, or null if
    * nothing could usefully be replaced at this setting.
    */
-  probe(point: EffortPoint, signal?: AbortSignal): Promise<Uint8Array | null>;
+  probe(
+    point: EffortPoint,
+    signal?: AbortSignal,
+    onImage?: (index: number, of: number) => void,
+  ): Promise<Uint8Array | null>;
 }
 
 /**
  * Open a downsampling session over a PDF, or return null when the rung has nothing
  * to work with — no eligible images, or the file will not parse.
  */
+/**
+ * Close enough to full size that re-encoding is a waste.
+ *
+ * Two per cent: a 1 per cent linear reduction is a 2 per cent pixel reduction, which
+ * no JPEG encoder turns into a saving worth a decode. Anything at or above this and
+ * at near-source quality is a probe that costs everything and tells us nothing.
+ */
+const NO_GAIN_SCALE = 0.98;
+const NO_GAIN_QUALITY = 0.9;
+
 export async function openDownsampleSession(
   source: Uint8Array,
   codec: ImageCodec,
@@ -75,24 +99,45 @@ export async function openDownsampleSession(
   const slots = collectSlots(doc);
   if (slots.length === 0) return null;
 
+  const dpis = slots
+    .map((slot) => effectiveDpi(slot.widthPx, slot.pageWidthPt))
+    .sort((a, b) => a - b);
+
+  let spent = 0;
+
   return {
     candidates: slots.length,
+    typicalDpi: dpis[Math.floor(dpis.length / 2)],
+    get spentMegapixels() {
+      return spent;
+    },
 
-    async probe(point, signal) {
+    async probe(point, signal, onImage) {
       const replacements: Array<{ slot: Slot; stream: PDFRawStream }> = [];
 
-      for (const slot of slots) {
+      for (const [index, slot] of slots.entries()) {
         throwIfAborted(signal);
+        onImage?.(index + 1, slots.length);
 
         // How small does this image need to be to hit the target DPI on its page?
         const sourceDpi = effectiveDpi(slot.widthPx, slot.pageWidthPt);
         const scale = scaleForDpi(sourceDpi, point.dpi);
 
-        // Nothing to gain from a re-encode at full size and near-full quality.
-        if (scale >= 1 && point.quality >= 0.9) continue;
+        // Nothing to gain from a re-encode at essentially full size and near-full
+        // quality, so do not spend one.
+        //
+        // The tolerance is the whole point and it was missing. A 300 DPI scan on an
+        // A4 page measures 2479px / 8.264pt-inches = 300.0004 DPI, so asking for 300
+        // gives a scale of 0.999987 — under one by a rounding error, past the guard,
+        // and into a full-size re-encode of every image in the document that comes
+        // back the same size it went in. On the fixture corpus that was 26 of the 92
+        // megapixels a single file cost, spent to learn nothing, every time. A phone
+        // pays for that in seconds.
+        if (scale >= NO_GAIN_SCALE && point.quality >= NO_GAIN_QUALITY) continue;
 
         const width = Math.max(1, Math.round(slot.widthPx * scale));
         const height = Math.max(1, Math.round(slot.heightPx * scale));
+        spent += (width * height) / 1e6;
 
         let encoded: Uint8Array;
         try {
