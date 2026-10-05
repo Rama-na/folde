@@ -1470,6 +1470,34 @@ async function runPhoneShell(browser: Browser): Promise<void> {
       trapped.join(", "),
     );
 
+    // And the bar itself reaches the bottom edge.
+    //
+    // This looks like it cannot fail — the element says `position: fixed` and
+    // `bottom: 0`. It failed anyway, by 24 pixels, for a whole session: the bar is
+    // a child of the column's `space-y-6`, which Tailwind v4 implements as a
+    // `margin-block-end` on every child but the last, and a bottom margin on a
+    // bottom-anchored fixed element lifts it clear of the edge. Nothing else
+    // noticed. The trapped-controls check above actually *passed more easily*,
+    // because the gap hid less. What it looked like was a strip of the tool list
+    // showing underneath the one control a thumb is meant to find.
+    const edge = (await page.evaluate(`(() => {
+      var all = document.querySelectorAll("button");
+      var btn = null;
+      for (var i = 0; i < all.length; i++) {
+        if ((all[i].textContent || "").indexOf("Make it fit") >= 0) { btn = all[i]; break; }
+      }
+      if (!btn) return null;
+      var node = btn;
+      while (node && getComputedStyle(node).position !== "fixed") node = node.parentElement;
+      if (!node) return null;
+      return window.innerHeight - node.getBoundingClientRect().bottom;
+    })()`)) as number | null;
+    check(
+      "and the bar is flush with the bottom of the screen",
+      edge !== null && Math.abs(edge) < 1,
+      edge === null ? "no fixed bar found" : `${Math.round(edge)}px of page showing below it`,
+    );
+
     // While it works, the rail must not claim it has finished.
     await page.getByRole("button", { name: "Make it fit" }).click();
     await page.waitForTimeout(700);

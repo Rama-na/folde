@@ -2,13 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { motion } from "motion/react";
 import { CircleNotch } from "@phosphor-icons/react";
 import { BRAND } from "@/lib/brand";
 import { formatBytes } from "@/lib/bytes";
 import type { Preset } from "@/lib/presets";
 import { useShrinkJob } from "@/lib/use-shrink-job";
-import { useMotionBudget } from "@/lib/use-motion-budget";
 import { ActionBar, FileSummary, StepRail, type Step } from "@/components/app/Shell";
 import { Dropzone } from "@/components/Dropzone";
 import { Landing } from "@/components/landing/Landing";
@@ -17,6 +15,7 @@ import { ToolPanel } from "@/components/tools/ToolPanel";
 import { analyse, type AnalysedFile, type ToolId } from "@/modules/tools";
 import { FileList, type ListedFile } from "@/components/FileList";
 import { Results } from "@/components/Results";
+import { Roadmap } from "@/components/Roadmap";
 import { TargetPicker } from "@/components/TargetPicker";
 import { planDelivery } from "@/modules/pack/strategy";
 import { largestSendableFile, type PackItem } from "@/modules/pack";
@@ -33,7 +32,6 @@ export default function Home() {
   const [listOpen, setListOpen] = useState(false);
   const [analysed, setAnalysed] = useState<AnalysedFile[]>([]);
   const job = useShrinkJob();
-  const budget = useMotionBudget();
 
   const total = useMemo(() => files.reduce((n, f) => n + f.size, 0), [files]);
 
@@ -183,7 +181,7 @@ export default function Home() {
   const idle = files.length === 0 && !job.running && !finished;
 
   return (
-    <div className="min-h-dvh pb-28 lg:pb-0">
+    <div className="min-h-dvh pb-36 lg:pb-0">
       <main className="mx-auto max-w-5xl px-5 py-6 sm:py-10 lg:py-14">
         <header className="flex items-baseline gap-3">
           <span className="text-xl font-semibold tracking-tight">
@@ -286,22 +284,6 @@ export default function Home() {
                 </div>
               )}
 
-              {strategy && !job.running && (
-                <motion.section
-                  initial={budget === "reduced" ? false : { opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                  // A status message, and marked as one: it appears in response to
-                  // picking a limit and says what is about to happen to these
-                  // particular files. A screen reader should announce that when it
-                  // changes, which `role="status"` is exactly for.
-                  role="status"
-                  className={`rounded-[12px] border border-accent/30 bg-accent-wash p-4 ${onStep("limit")}`}
-                >
-                  <p className="text-sm leading-relaxed">{strategy.reason}</p>
-                </motion.section>
-              )}
-
               {job.running && job.progress && (
                 <div className="flex min-h-[55svh] flex-col justify-center lg:block lg:min-h-0">
                   <Progress
@@ -328,7 +310,7 @@ export default function Home() {
               {tool === null && strategy && !job.running && (
                 <ActionBar
                   label="Make it fit"
-                  detail={`${files.length} file${files.length === 1 ? "" : "s"} · ${formatBytes(total)} · under ${preset ? formatBytes(preset.bytes) : ""}`}
+                  detail={strategy.reason}
                   onPress={start}
                 />
               )}
@@ -336,6 +318,17 @@ export default function Home() {
               {tool === null && !job.running && analysed.length > 0 && (
                 <div className={onStep("limit")}>
                   <ToolOffers files={analysed} onChoose={chooseTool} />
+                </div>
+              )}
+
+              {/*
+                Last on the page, under everything that works. It is the only
+                part of this column that is not a thing you can do right now,
+                so it goes where the eye arrives having run out of those.
+              */}
+              {tool === null && !job.running && files.length > 0 && (
+                <div className={onStep("limit")}>
+                  <Roadmap />
                 </div>
               )}
             </div>

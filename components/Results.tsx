@@ -9,6 +9,7 @@ import {
   WarningCircle,
   TextAa,
   Scissors,
+  PaperPlaneTilt,
 } from "@phosphor-icons/react";
 import { formatBytes } from "@/lib/bytes";
 import type { Preset } from "@/lib/presets";
@@ -68,29 +69,76 @@ export function Results({
   return (
     <div className="space-y-6">
       {/*
-        The payoff. The only element on the page at this scale, because it is the
-        only question anybody came here with.
+        The payoff, on the stage.
+        
+        The dark panel is this product's one treatment for a number that has been
+        measured: the landing page uses it for the figure the test corpus produces,
+        and this is the same claim about your own files. Same meaning, same ground.
+        It is also the only way the green reads as green rather than as a slightly
+        different grey, which on the one screen somebody came here for is worth the
+        inversion.
+
+        The two never share a screen, so the "one inverted panel" rule in DESIGN.md
+        holds: the landing is gone by the time this exists.
       */}
-      <section className="rounded-[12px] border border-edge bg-surface p-5 sm:p-6">
-        <p className="text-sm text-ink-soft">
-          {outcomes.length} file{outcomes.length === 1 ? "" : "s"}
-        </p>
-        <p className="tabular mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-3xl font-semibold tracking-tight sm:text-4xl">
-          <span className="text-ink-soft">{formatBytes(saved.before)}</span>
-          <span aria-hidden className="text-ink-soft/50">
-            →
-          </span>
-          <CountBytes
-            from={saved.before}
-            to={saved.after}
-            className={shrank ? "text-fits" : undefined}
-          />
-        </p>
-        {shrank && (
-          <p className="mt-2 text-sm font-medium text-fits">
-            {Math.round((1 - saved.after / saved.before) * 100)}% smaller
+      <section className="relative overflow-hidden rounded-[12px] border border-stage-edge bg-stage p-5 text-stage-ink sm:p-7">
+        {/*
+          One soft light behind the number, and nothing else.
+
+          In dark mode the panel and the page are both near-black, and the first
+          version of this had the payoff dissolving into the background on the one
+          screen somebody came here for. This gives the card its own light source
+          instead of a brighter border, which would have read as a box rather than
+          as a stage.
+        */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-stage-accent/15 blur-3xl"
+        />
+
+        <div className="relative">
+          <p className="text-sm text-stage-soft">
+            {outcomes.length} file{outcomes.length === 1 ? "" : "s"}
           </p>
-        )}
+          {/*
+            One paragraph, two lines, two sizes.
+
+            Before and after at the same scale made the arrow the centre of the
+            composition and wrapped it to the end of the first line, where it sat
+            pointing at nothing. The starting size is context; the measured one is
+            the point, and only one thing on this screen is allowed to be the point.
+
+            They stay inside a single <p> because the suite reads the before, the
+            arrow and the after out of one element to check the counted figure
+            agrees with the percentage — splitting them would quietly turn that
+            assertion into one that cannot fail.
+          */}
+          <p className="tabular mt-1.5">
+            <span className="block text-base font-medium text-stage-soft">
+              {formatBytes(saved.before)}{" "}
+              <span aria-hidden className="text-stage-soft/60">
+                →
+              </span>
+            </span>
+            <CountBytes
+              from={saved.before}
+              to={saved.after}
+              className={[
+                "mt-1 block text-[2.75rem] font-semibold leading-none tracking-tight sm:text-[3.5rem]",
+                shrank ? "text-stage-fits" : "text-stage-ink",
+              ].join(" ")}
+            />
+          </p>
+          {shrank ? (
+            <p className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-stage-fits/15 px-2.5 py-1 text-xs font-semibold text-stage-fits">
+              {Math.round((1 - saved.after / saved.before) * 100)}% smaller
+            </p>
+          ) : (
+            <p className="mt-4 text-sm leading-relaxed text-stage-soft">
+              Everything was already under the limit, so nothing was re-encoded.
+            </p>
+          )}
+        </div>
       </section>
 
       {failed.length > 0 && <Refusals outcomes={failed} />}
@@ -330,6 +378,50 @@ function MailBatches({
           Save a list of what is in each part
         </button>
       )}
+
+      {batches.length > 1 && <SendingThemYourself parts={batches.length} />}
+    </section>
+  );
+}
+
+/**
+ * The roadmap, at the moment somebody wants it.
+ *
+ * Shown only when there is more than one part, because that is when attaching by
+ * hand stops being trivial: three emails, each with the right files, each labelled
+ * so the recipient knows the set is complete. Somebody who has just been told to do
+ * that three times is the person who wants this built, and telling them here is
+ * worth more than a pricing page they will not visit.
+ *
+ * It is a statement, not a control. There is nothing to press yet, and a button
+ * that does nothing is worse than no button.
+ */
+function SendingThemYourself({ parts }: { parts: number }) {
+  return (
+    <section className="rounded-[12px] border border-dashed border-edge p-4">
+      <div className="flex items-start gap-3">
+        <PaperPlaneTilt
+          size={18}
+          weight="regular"
+          aria-hidden
+          className="mt-0.5 shrink-0 text-ink-soft"
+        />
+        <div>
+          {/* Deliberately not "N emails to send": that phrase is the results
+              heading above, and two headings matching it makes the page ambiguous
+              to read, for a screen reader and for anything else. */}
+          <h3 className="text-sm font-semibold">
+            You still have to attach these yourself
+          </h3>
+          <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+            {parts} messages, each with the right files in it, each labelled so the
+            recipient knows the set is complete. Naming a recipient and having that
+            happen from your own Gmail is the next thing being built. It is the one
+            feature that needs an account, because it is the one that cannot happen
+            on your device.
+          </p>
+        </div>
+      </div>
     </section>
   );
 }

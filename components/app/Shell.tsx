@@ -115,9 +115,32 @@ export function ActionBar({
       initial={budget === "reduced" ? false : { y: 24 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-edge bg-canvas/85 backdrop-blur-xl lg:static lg:border-0 lg:bg-transparent lg:pb-0 lg:backdrop-blur-none"
+      /*
+        `mb-0` is load-bearing, not tidiness. This sits inside the column's
+        `space-y-6`, and Tailwind v4 implements that as `margin-block-end` on every
+        child but the last — which a `bottom: 0` fixed element does not ignore. It
+        lifts the bar 24px off the bottom of the screen, and the strip of tool list
+        showing underneath was the exact thing that looked unfinished in the
+        screenshot. On `lg` the bar is static again and wants the rhythm back.
+      */
+      className="fixed inset-x-0 bottom-0 z-40 mb-0 border-t border-edge bg-canvas lg:static lg:mb-6 lg:border-0 lg:bg-transparent lg:pb-0"
       style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
     >
+      {/*
+        Opaque, with the page fading out above it.
+
+        It was a translucent blur, which in a screenshot turned out to be exactly
+        the clumsy thing: the tool list underneath showed through as ghost text
+        directly behind "Make it fit", so the most important control on a phone sat
+        on top of words it had nothing to do with. A frosted bar only reads as glass
+        when there is something worth seeing through it. Here the honest treatment
+        is a solid bar and eight pixels of fade, so the column visibly runs under it
+        rather than being smeared into it.
+      */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 -top-8 h-8 bg-gradient-to-t from-canvas to-transparent lg:hidden"
+      />
       <div className="mx-auto flex max-w-lg items-center gap-2 px-4 pt-3 lg:mx-0 lg:max-w-none lg:px-0 lg:pt-0">
         {secondary && (
           <button
@@ -141,8 +164,24 @@ export function ActionBar({
           {!busy && <ArrowRight size={16} weight="bold" aria-hidden />}
         </button>
       </div>
+      {/*
+        What pressing it will do, attached to the thing that does it.
+
+        This sentence used to be a card of its own further up the column, and on a
+        phone it appeared at the exact moment the fixed bar covered it: you chose a
+        limit, the page told you the plan, and the plan landed underneath the
+        button. Keeping them together is also just truer — "2 emails instead of 3"
+        is not a fact about the page, it is a description of this button.
+
+        `role="status"` because it appears in response to choosing a limit and says
+        what will happen to these particular files. A screen reader should announce
+        that when it changes.
+      */}
       {detail && (
-        <p className="tabular mx-auto max-w-lg px-4 pt-1.5 text-center text-xs text-ink-soft lg:mx-0 lg:px-0 lg:text-left">
+        <p
+          role="status"
+          className="mx-auto max-w-lg px-4 pt-2 text-center text-xs leading-relaxed text-ink-soft lg:mx-0 lg:max-w-prose lg:px-0 lg:text-left"
+        >
           {detail}
         </p>
       )}
