@@ -181,8 +181,32 @@ never constructed under `reduced`.
   phone and inline on desktop, and it is the same button. Two buttons with one name
   in one document is ambiguous for a screen reader and for anything else reading the
   page, and it is a second thing to keep in sync.
-- No row of three equal cards. Where a section has parts, they are asymmetric,
-  because they are asymmetric in the product.
+- No row of three equal cards — or two. "Two jobs" carried a comment claiming the
+  pair were "asymmetric on the page because they are asymmetric in the product"
+  over CSS that read `1fr 1fr` and gave them identical cards. Where a section has
+  parts, the parts differ in shape because the problems differ: a portal is one
+  file against one hard number, so it is one panel with the number in it; mail is a
+  pile of consequences, so it is a column of hairline-separated statements.
+- **One column width from the wordmark to the footer.** The working surface is
+  `max-w-5xl` and every landing band used to be `max-w-2xl`, so the page visibly
+  *narrowed* after the hero into a 672px ribbon with three hundred pixels of void
+  either side. Invisible at 390px, which is why the suite never saw it — there is
+  now a wide-screen landing pass in `test:browser` that measures both and fails if
+  a band is narrower than the surface above it.
+- **One section-heading size on a page, and one thing larger than it.** On the
+  landing that one thing is the measured number. Two different heading sizes reads
+  as a mistake rather than as a hierarchy.
+- **A promise is not a feature.** The privacy statement sat in the same bordered
+  card as the feature sections, which quietly filed the one unconditional thing
+  this product says alongside "merge into one PDF". It gets bare canvas.
+- **A pinned scroll stage is shorter than the viewport, and offset into it.** A
+  full-height box centred on its own content leaves ~40vh of empty page between the
+  hero and the first frame, because the box begins below the hero and is only half
+  full until it sticks. Anchoring the content to the top of a full-height box moves
+  the same 40vh under the last frame instead, where it reads as the page having
+  ended. 80svh at a 10vh offset is centred for the whole pin with 10vh spare at
+  each end. `svh`, so the unit means the same thing while a phone's address bar
+  collapses.
 - **A card is for hierarchy, not for grouping.** The target picker was four bordered
   boxes stacked down the screen — a tab bar, a paragraph, four identical 110px cards
   and a custom input — every one of them the same white rectangle on a near-white

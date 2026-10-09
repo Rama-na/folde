@@ -230,11 +230,11 @@ export default function Home() {
               )}
 
               {tool === null && idle && (
-                <div className="max-w-xl">
-                  <h1 className="text-3xl font-semibold leading-[1.15] tracking-tight sm:text-[2.6rem]">
+                <div className="max-w-2xl">
+                  <h1 className="text-3xl font-semibold leading-[1.1] tracking-tight sm:text-[2.6rem] lg:text-[3.25rem]">
                     Name the limit. Get files that land under it.
                   </h1>
-                  <p className="mt-3 leading-relaxed text-ink-soft">
+                  <p className="mt-4 max-w-prose text-lg leading-relaxed text-ink-soft">
                     A scan, a passport photograph, or a folder of forty. Every
                     size you see here has been measured on the real output, on
                     your device — nothing is uploaded and nothing is guessed.

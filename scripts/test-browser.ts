@@ -1029,6 +1029,55 @@ async function runLanding(browser: Browser): Promise<void> {
   } finally {
     await still.close();
   }
+
+  /*
+   * And once on a wide screen, because the fault this catches is invisible at 390px.
+   *
+   * Every band down here was `max-w-2xl` while the working surface above is
+   * `max-w-5xl`. On a phone both are just "the screen" and the suite saw nothing
+   * wrong; at 1280 the page visibly narrowed after the hero into a 672px ribbon
+   * with three hundred pixels of void either side, which is the thing that made it
+   * read as unfinished. A width is a layout fact, so it can be measured rather than
+   * eyeballed on the next redesign.
+   */
+  console.log("\nbrowser: the landing page on a wide screen");
+  const wide = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page3 = await wide.newPage();
+  page3.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  FAIL uncaught page error — ${err.message}`);
+  });
+  try {
+    await page3.goto(ORIGIN);
+    await settle(page3);
+
+    const overflow = await page3.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check("no horizontal scroll at 1280px", overflow <= 0, `${overflow}px over`);
+
+    const widths = (await page3.evaluate(`(() => {
+      var drop = document.querySelector("#drop");
+      var heading = Array.prototype.slice.call(document.querySelectorAll("h2")).filter(function (h) {
+        return h.textContent && h.textContent.indexOf("The usual tools are here") >= 0;
+      })[0];
+      var band = heading ? heading.closest("section") : null;
+      return {
+        surface: drop ? Math.round(drop.getBoundingClientRect().width) : 0,
+        band: band ? Math.round(band.getBoundingClientRect().width) : 0,
+      };
+    })()`)) as { surface: number; band: number };
+
+    console.log(`  working surface ${widths.surface}px, landing band ${widths.band}px`);
+    check(
+      "the landing is the same column width as the surface above it",
+      widths.surface > 0 && widths.band >= widths.surface - 2,
+      `${widths.band}px against ${widths.surface}px`,
+    );
+    await assertClean(page3, "the wide landing");
+  } finally {
+    await wide.close();
+  }
 }
 
 /**

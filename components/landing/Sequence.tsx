@@ -64,7 +64,7 @@ function SequenceScrolled() {
     <section
       ref={track}
       aria-label="What happens to a folder of documents"
-      className="relative mt-20 h-[240vh] sm:mt-28"
+      className="relative mt-8 h-[220vh] sm:mt-12"
     >
       {/*
         Clipped sideways, not hidden. A card nudged 30px out of line on a 390px
@@ -74,11 +74,23 @@ function SequenceScrolled() {
         stage inside it from sticking. `clip` removes the overflow without that.
       */}
       {/*
-        Sitting above centre rather than on it. A pinned stage that centres its
-        content leaves half a viewport of empty page under the last frame before the
-        next section arrives, which reads as the page having ended.
+        A pinned box shorter than the viewport, offset to sit centred inside it.
+
+        This is the arrangement that has the least empty page at both ends, and it
+        took getting both ends wrong to find. A full-height box centred on its own
+        content leaves roughly 40vh of black between the drop zone and the first
+        frame, because the box begins below the hero and is only half full until it
+        sticks — that is the gap you see scrolling down from the hero. Anchoring the
+        content to the top of a full-height box instead just moves the same 40vh to
+        the end of the run, under the last frame, where it reads as the page having
+        stopped.
+
+        At 80svh with a 10vh offset the content is dead centre of the screen for the
+        whole pin, and the leftover is 10vh at the top and 10vh at the bottom rather
+        than 40 at one of them. `svh` because the unit has to mean the same thing
+        while a phone's address bar is collapsing.
       */}
-      <div className="sticky top-0 flex min-h-dvh flex-col justify-center overflow-x-clip pb-[14vh] pt-10">
+      <div className="sticky top-[10vh] flex min-h-[80svh] flex-col justify-center overflow-x-clip">
         <Acts progress={scrollYProgress} />
         <Stage progress={scrollYProgress} />
       </div>
@@ -100,7 +112,7 @@ const ACTS = [
 
 function Acts({ progress }: { progress: MotionValue<number> }) {
   return (
-    <ol className="mx-auto flex w-full max-w-xl gap-3 px-5 sm:gap-6">
+    <ol className="mx-auto flex w-full max-w-xl gap-3 px-5 sm:gap-6 lg:max-w-2xl">
       {ACTS.map((act, i) => (
         <Act key={act.label} act={act} index={i} progress={progress} />
       ))}
@@ -172,7 +184,7 @@ function Stage({ progress }: { progress: MotionValue<number> }) {
   return (
     <motion.div
       style={{ gap }}
-      className="mx-auto mt-8 flex w-full max-w-xl flex-col px-5"
+      className="mx-auto mt-8 flex w-full max-w-xl flex-col px-5 lg:max-w-2xl"
     >
       {STORY.parts.map((part, partIndex) => (
         <Part
@@ -338,7 +350,7 @@ function SequenceStill() {
   return (
     <section
       aria-label="What happens to a folder of documents"
-      className="mx-auto mt-20 w-full max-w-2xl px-5"
+      className="mx-auto mt-14 w-full max-w-2xl px-5"
     >
       <p className="text-sm text-ink-soft">
         Six files, {formatBytes(STORY.totalBefore)}. As they are, that is{" "}
