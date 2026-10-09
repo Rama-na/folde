@@ -9,7 +9,16 @@
   // the OpenNext adapter and rebuilds looking for `.next/standalone` - which a
   // static export never produces, so the deploy dies on a missing
   // pages-manifest.json after a build that succeeded.
-  "name": "readypdf",
+  // The Worker this deploys to, which is NOT the product name — that lives in
+  // `lib/brand.ts` and is free to change without touching anything here.
+  //
+  // It has to match the Cloudflare project, because `wrangler deploy` reads the
+  // name from this file and deploys to whatever it says. While it said "readypdf"
+  // and the project was "folde", a successful build would have published to a
+  // different Worker and left folde.ramana-jp.workers.dev serving the old one.
+  // Renaming the Cloudflare project to readypdf and changing this line back is the
+  // other way round, and costs the existing URL.
+  "name": "folde",
   "compatibility_date": "2026-09-11",
 
   "assets": {

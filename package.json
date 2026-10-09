@@ -14,14 +14,17 @@
     "test:pack": "tsx scripts/test-pack.ts",
     "test:browser": "tsx scripts/test-browser.ts",
     "test:all": "npm run test && npm run build:server && npm run test:browser && npm run build:static && npm run test:static",
-    "prebuild": "tsx scripts/copy-pdfjs-worker.ts",
+    "prebuild": "npm run copy:pdfjs",
     "test:image": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-image.ts",
     "fixtures:pile": "tsx scripts/make-pile.ts",
     "build:static": "next build",
     "build:server": "BUILD_TARGET=server next build",
     "test:static": "tsx scripts/test-static.ts",
     "test:split": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-split.ts",
-    "test:tools": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-tools.ts"
+    "test:tools": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-tools.ts",
+    "copy:pdfjs": "tsx scripts/copy-pdfjs-worker.ts",
+    "prebuild:static": "npm run copy:pdfjs",
+    "prebuild:server": "npm run copy:pdfjs"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.11.0",

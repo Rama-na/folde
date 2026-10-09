@@ -38,6 +38,45 @@ async function main(): Promise<void> {
     throw new Error("no static export — run `npm run build:static` first");
   }
 
+  /*
+   * Everything the bundle asks for by absolute path has to be in the export.
+   *
+   * pdf.js's worker is the one that matters and the one that went missing: it is
+   * copied into public/ by a prebuild hook, it is gitignored, and npm keys its
+   * hooks to the exact script name — so `prebuild` ran for `npm run build` and not
+   * for `npm run build:static`, which is the command the deploy uses. Every
+   * deployed build shipped without it for weeks. Nothing failed. pdf.js 404s, falls
+   * back to running the renderer inline on the calling thread, and the app simply
+   * becomes slow enough to look like it has hung.
+   *
+   * Checked against the chunks rather than against a hardcoded list, so a second
+   * asset referenced this way is covered the day it is added.
+   */
+  const chunks = join(process.cwd(), "out", "_next", "static", "chunks");
+  const referenced = new Set<string>();
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".js")) {
+        for (const m of readFileSync(full, "utf8").matchAll(
+          /"\/((?:[\w.-]+\/)*[\w.-]+\.(?:mjs|wasm|js))"/g,
+        )) {
+          referenced.add(m[1]);
+        }
+      }
+    }
+  };
+  if (existsSync(chunks)) walk(chunks);
+  const missing = [...referenced].filter(
+    (ref) => !existsSync(join(process.cwd(), "out", ref)),
+  );
+  check(
+    "every asset the bundle fetches by path is in the export",
+    missing.length === 0,
+    missing.join(", "),
+  );
+
   const server = spawn("npx", ["--yes", "serve", "out", "-l", String(PORT)], {
     stdio: "ignore",
   });

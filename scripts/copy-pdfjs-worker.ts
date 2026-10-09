@@ -8,7 +8,15 @@
  * just becomes slow enough to look like a hang.
  *
  * Copying the file into public/ and pointing at it by absolute path is the boring
- * arrangement that works. Run from prebuild; the copy is gitignored.
+ * arrangement that works. The copy is gitignored, so it has to be made by the build.
+ *
+ * Wired into `prebuild`, `prebuild:static` AND `prebuild:server`, because npm keys
+ * its pre-hooks to the exact script name: `prebuild` runs before `build` and before
+ * nothing else. The deploy command is `npm run build:static`, so for as long as that
+ * was the only hook, every deployed build shipped without this file. It does not
+ * fail — pdf.js 404s, falls back to its inline "fake worker" and runs the whole
+ * renderer on the main thread, which is indistinguishable from the app hanging on a
+ * mid-range phone. `scripts/test-static.ts` now asserts the file is in the export.
  */
 import { copyFileSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
