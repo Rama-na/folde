@@ -252,7 +252,11 @@ export default function Home() {
 
               {tool === null && (
                 <div className={files.length === 0 || listOpen ? "" : "hidden lg:block"}>
-                  <Dropzone onFiles={addFiles} disabled={job.running} />
+                  <Dropzone
+                    onFiles={addFiles}
+                    disabled={job.running}
+                    compact={files.length > 0}
+                  />
                 </div>
               )}
 
@@ -333,8 +337,19 @@ export default function Home() {
               )}
             </div>
 
-            <aside className="hidden lg:sticky lg:top-14 lg:block lg:self-start">
-              {files.length > 0 ? (
+            {/*
+              The right column, which used to be a file list and then a thousand
+              pixels of nothing.
+
+              Three files is three rows; the column emptied out below them and the
+              whole page read as one narrow strip on a wide screen. The explainer
+              now stays underneath rather than being swapped out — it is the fact
+              that answers "why is my 4.7 MB email bouncing", which is a live
+              question while somebody is choosing between 5 and 25 MB, not only
+              before they have loaded anything.
+            */}
+            <aside className="hidden space-y-6 lg:sticky lg:top-14 lg:block lg:self-start">
+              {files.length > 0 && (
                 <FileList
                   files={files}
                   total={total}
@@ -345,9 +360,8 @@ export default function Home() {
                   }
                   onClear={job.running ? undefined : () => setFiles([])}
                 />
-              ) : (
-                <WhyItBounces />
               )}
+              <WhyItBounces />
             </aside>
           </div>
         )}
@@ -355,7 +369,7 @@ export default function Home() {
 
       {idle && <Landing />}
 
-      <footer className="mx-auto mt-20 max-w-5xl px-5 pb-10 text-sm text-ink-soft sm:mt-28">
+      <footer className="mx-auto mt-16 max-w-5xl px-5 pb-10 text-sm text-ink-soft lg:mt-10">
         <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-t border-edge pt-6">
           <span>
             <span className="font-medium text-ink">{BRAND.name}</span>{" "}

@@ -167,6 +167,16 @@ never constructed under `reduced`.
   not, finished or not — so there is no wizard to get out of step with reality.
   Desktop keeps the two-column surface; it has the room and the thumb is not a
   constraint.
+- **The drop zone shrinks once it has done its job.** A 270px hero asking for files
+  you have already given it held the top of a desktop screen and pushed the size
+  picker most of the way down the viewport. With files loaded it is a 44px "Add
+  more files" row, still a full drop target.
+- **The right column carries something at every step, or it is not a column.** Three
+  files is three rows, and under them the aside emptied out for a thousand pixels
+  while the page read as one narrow strip on a wide screen. The base64 explainer now
+  stays below the file list rather than being swapped out for it — "why is my 4.7 MB
+  email bouncing" is a live question *while* choosing between 5 and 25 MB, not only
+  before anything is loaded.
 - **One element, two positions — never two elements.** The action bar is fixed on a
   phone and inline on desktop, and it is the same button. Two buttons with one name
   in one document is ambiguous for a screen reader and for anything else reading the
